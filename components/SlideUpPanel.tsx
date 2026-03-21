@@ -21,7 +21,10 @@ interface SlideUpPanelProps {
   baseline: number;
   distance: number;
   isOpen: boolean;
+  isExpanded: boolean;
   onClose: () => void;
+  onCollapse: () => void;
+  onExpand: () => void;
   onSelect: (mode: string) => void;
   onLogTrip: (mode: string, gCO2e: number) => void;
 }
@@ -32,22 +35,23 @@ export default function SlideUpPanel({
   baseline,
   distance,
   isOpen,
+  isExpanded,
   onClose,
+  onCollapse,
+  onExpand,
   onSelect,
   onLogTrip,
 }: SlideUpPanelProps) {
-  const [currentHeight, setCurrentHeight] = useState(window.innerHeight * 0.85);
-  const [expanded, setExpanded] = useState(true);
+  const [currentHeight, setCurrentHeight] = useState(600);
   const startY = useRef(0);
   const startHeight = useRef(0);
   const isDragging = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
-      setCurrentHeight(window.innerHeight * 0.85);
-      setExpanded(true);
+      setCurrentHeight(isExpanded ? window.innerHeight * 0.85 : window.innerHeight * 0.2);
     }
-  }, [isOpen]);
+  }, [isOpen, isExpanded]);
 
   const handleModeSelect = (mode: ModeScore) => {
     onSelect(mode.mode);
@@ -59,8 +63,8 @@ export default function SlideUpPanel({
     : 0;
 
   const getSnapHeights = () => ({
-    snapCollapsed: window.innerHeight * 0.15,
-    snapExpanded: window.innerHeight * 0.85,
+    snapCollapsed: typeof window !== 'undefined' ? window.innerHeight * 0.15 : 150,
+    snapExpanded: typeof window !== 'undefined' ? window.innerHeight * 0.85 : 600,
   });
 
   const snapToPosition = (newHeight: number) => {
@@ -68,10 +72,10 @@ export default function SlideUpPanel({
     
     if (newHeight < snapCollapsed + (snapExpanded - snapCollapsed) * 0.4) {
       setCurrentHeight(snapCollapsed);
-      setExpanded(false);
+      onCollapse();
     } else {
       setCurrentHeight(snapExpanded);
-      setExpanded(true);
+      onExpand();
     }
   };
 
@@ -84,8 +88,8 @@ export default function SlideUpPanel({
   const handleDragMove = (clientY: number) => {
     if (!isDragging.current) return;
     const delta = (startY.current - clientY) * 1.5;
-    const minHeight = window.innerHeight * 0.1;
-    const maxHeight = window.innerHeight * 0.95;
+    const minHeight = typeof window !== 'undefined' ? window.innerHeight * 0.1 : 100;
+    const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.95 : 700;
     const newHeight = Math.min(Math.max(startHeight.current + delta, minHeight), maxHeight);
     setCurrentHeight(newHeight);
   };
@@ -138,12 +142,12 @@ export default function SlideUpPanel({
         <div 
           className="px-4 py-3 border-b border-slate-100 flex-shrink-0 cursor-pointer hover:bg-slate-50 transition-colors"
           onClick={() => {
-            if (expanded) {
+            if (isExpanded) {
               setCurrentHeight(window.innerHeight * 0.2);
-              setExpanded(false);
+              onCollapse();
             } else {
               setCurrentHeight(window.innerHeight * 0.85);
-              setExpanded(true);
+              onExpand();
             }
           }}
         >

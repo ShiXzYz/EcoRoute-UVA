@@ -48,6 +48,7 @@ export default function Home() {
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(true);
   const [fromInput, setFromInput] = useState('');
   const [toInput, setToInput] = useState('');
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
@@ -145,7 +146,15 @@ export default function Home() {
   return (
     <main className="relative h-screen w-screen overflow-hidden">
       {/* Full Screen Map - with low z-index */}
-      <div className="absolute inset-0" style={{ zIndex: 1 }}>
+      <div 
+        className="absolute inset-0" 
+        style={{ zIndex: 1 }}
+        onClick={() => {
+          if (panelOpen && panelExpanded) {
+            setPanelExpanded(false);
+          }
+        }}
+      >
         <MapSelector
           onLocationSelect={handleLocationSelect}
           fromLocation={fromLocation}
@@ -206,7 +215,10 @@ export default function Home() {
         baseline={baseline}
         distance={distance}
         isOpen={panelOpen}
+        isExpanded={panelExpanded}
         onClose={() => setPanelOpen(false)}
+        onCollapse={() => setPanelExpanded(false)}
+        onExpand={() => setPanelExpanded(true)}
         onSelect={setSelectedMode}
         onLogTrip={handleLogTrip}
       />
