@@ -36,16 +36,16 @@ export default function SlideUpPanel({
   onSelect,
   onLogTrip,
 }: SlideUpPanelProps) {
-  const [currentHeight, setCurrentHeight] = useState(window.innerHeight * 0.25);
-  const [expanded, setExpanded] = useState(false);
+  const [currentHeight, setCurrentHeight] = useState(window.innerHeight * 0.85);
+  const [expanded, setExpanded] = useState(true);
   const startY = useRef(0);
   const startHeight = useRef(0);
   const isDragging = useRef(false);
-  const lastTap = useRef(0);
 
   useEffect(() => {
     if (isOpen) {
-      setCurrentHeight(window.innerHeight * 0.25);
+      setCurrentHeight(window.innerHeight * 0.85);
+      setExpanded(true);
     }
   }, [isOpen]);
 
@@ -59,21 +59,18 @@ export default function SlideUpPanel({
     : 0;
 
   const getSnapHeights = () => ({
-    snapSmall: window.innerHeight * 0.25,
-    snapLarge: window.innerHeight * 0.8,
+    snapCollapsed: window.innerHeight * 0.15,
+    snapExpanded: window.innerHeight * 0.85,
   });
 
   const snapToPosition = (newHeight: number) => {
-    const { snapSmall, snapLarge } = getSnapHeights();
+    const { snapCollapsed, snapExpanded } = getSnapHeights();
     
-    if (newHeight < 50) {
-      setCurrentHeight(0);
-      setTimeout(onClose, 300);
-    } else if (newHeight < snapSmall + (snapLarge - snapSmall) * 0.3) {
-      setCurrentHeight(snapSmall);
+    if (newHeight < snapCollapsed + (snapExpanded - snapCollapsed) * 0.4) {
+      setCurrentHeight(snapCollapsed);
       setExpanded(false);
     } else {
-      setCurrentHeight(snapLarge);
+      setCurrentHeight(snapExpanded);
       setExpanded(true);
     }
   };
@@ -87,7 +84,9 @@ export default function SlideUpPanel({
   const handleDragMove = (clientY: number) => {
     if (!isDragging.current) return;
     const delta = (startY.current - clientY) * 1.5;
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.95);
+    const minHeight = window.innerHeight * 0.1;
+    const maxHeight = window.innerHeight * 0.95;
+    const newHeight = Math.min(Math.max(startHeight.current + delta, minHeight), maxHeight);
     setCurrentHeight(newHeight);
   };
 
@@ -95,22 +94,6 @@ export default function SlideUpPanel({
     if (!isDragging.current) return;
     isDragging.current = false;
     snapToPosition(currentHeight);
-  };
-
-  const handleTap = () => {
-    const now = Date.now();
-    if (now - lastTap.current < 300) return;
-    lastTap.current = now;
-    
-    if (expanded) {
-      const { snapSmall } = getSnapHeights();
-      setCurrentHeight(snapSmall);
-      setExpanded(false);
-    } else {
-      const { snapLarge } = getSnapHeights();
-      setCurrentHeight(snapLarge);
-      setExpanded(true);
-    }
   };
 
   if (!isOpen) return null;
@@ -124,7 +107,7 @@ export default function SlideUpPanel({
       }}
     >
       <div className="h-full bg-white rounded-t-3xl shadow-2xl overflow-hidden flex flex-col">
-        {/* Drag Handle + Tap area */}
+        {/* Drag Handle */}
         <div 
           className="flex flex-col items-center cursor-grab active:cursor-grabbing select-none"
           onMouseDown={(e) => {
@@ -147,13 +130,23 @@ export default function SlideUpPanel({
             }
           }}
           onTouchEnd={handleDragEnd}
-          onClick={handleTap}
         >
           <div className="w-12 h-1.5 bg-slate-300 rounded-full mt-3 mb-1" />
         </div>
 
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-100 flex-shrink-0">
+        {/* Header - clickable to collapse */}
+        <div 
+          className="px-4 py-3 border-b border-slate-100 flex-shrink-0 cursor-pointer hover:bg-slate-50 transition-colors"
+          onClick={() => {
+            if (expanded) {
+              setCurrentHeight(window.innerHeight * 0.2);
+              setExpanded(false);
+            } else {
+              setCurrentHeight(window.innerHeight * 0.85);
+              setExpanded(true);
+            }
+          }}
+        >
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">
