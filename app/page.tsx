@@ -4,6 +4,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import SlideUpPanel from '@/components/SlideUpPanel';
+import { getCachedDirections, setCachedDirections } from '@/lib/cache';
 
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
@@ -145,8 +146,28 @@ export default function Home() {
 
     setRouteLoading(true);
 
-    // Wait for google to be available
-    const tryFetch = () => {
+    const tryFetch = async () => {
+      // Check cache first
+      const cached = await getCachedDirections(
+        fromLocation.lat,
+        fromLocation.lng,
+        toLocation.lat,
+        toLocation.lng,
+        selectedMode
+      );
+
+      if (cached) {
+        // eslint-disable-next-line
+        const points = window.google.maps.geometry.encoding.decodePath(cached.polyline);
+        setRoute({
+          points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+          color: undefined,
+        });
+        setRouteLoading(false);
+        return;
+      }
+
+      // Wait for google to be available
       if (typeof window.google === 'undefined' || !window.google.maps) {
         setTimeout(tryFetch, 100);
         return;
@@ -175,12 +196,25 @@ export default function Home() {
             destination: new window.google.maps.LatLng(toLocation.lat, toLocation.lng),
             travelMode: (window.google.maps.TravelMode as any)[mode],
           },
-          (result, status) => {
+          async (result, status) => {
             if (status === 'OK' && result) {
               // eslint-disable-next-line
               const polyline = result.routes[0].overview_polyline as any;
               const path = polyline.getPath ? polyline.getPath() : polyline;
               const points = window.google.maps.geometry.encoding.decodePath(path);
+              
+              // Cache the result
+              await setCachedDirections(
+                fromLocation.lat,
+                fromLocation.lng,
+                toLocation.lat,
+                toLocation.lng,
+                selectedMode,
+                path,
+                result.routes[0].legs[0]?.distance?.value || 0,
+                result.routes[0].legs[0]?.duration?.value || 0
+              );
+
               setRoute({
                 points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
                 color: undefined,
