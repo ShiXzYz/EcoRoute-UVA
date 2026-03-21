@@ -1,0 +1,105 @@
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply box-border;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  @apply bg-slate-900 text-slate-900;
+}
+
+/* UVA Theme Colors */
+:root {
+  --uva-primary: #232d4b;
+  --uva-accent: #00a3e0;
+  --eco-green: #10b981;
+  --eco-amber: #f59e0b;
+  --eco-red: #ef4444;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.5s ease-out;
+}
+
+/* Mode Cards */
+.mode-card {
+  @apply relative overflow-hidden rounded-lg border-2 border-slate-200 bg-white p-4 transition-all duration-300 cursor-pointer hover:shadow-md;
+}
+
+.mode-card.recommended {
+  @apply border-green-500 bg-green-50;
+}
+
+.mode-card.selected {
+  @apply border-green-600 shadow-lg;
+}
+
+/* Badge */
+.badge-recommended {
+  @apply absolute top-3 right-3 inline-flex items-center rounded-full bg-green-500 px-3 py-1 text-xs font-semibold text-white;
+}
+
+.badge-warning {
+  @apply inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800;
+}
+
+/* Streak Ring */
+.streak-ring {
+  @apply relative w-24 h-24 rounded-full flex items-center justify-center border-4 border-slate-200 bg-white;
+}
+
+.streak-ring.active {
+  @apply border-green-500 bg-green-50;
+}
+
+.streak-ring-fill {
+  @apply absolute inset-0 rounded-full bg-gradient-to-r from-green-400 to-green-600 opacity-20;
+}
+
+.streak-number {
+  @apply text-2xl font-bold text-slate-900;
+}
+
+.streak-label {
+  @apply text-xs text-slate-600 font-medium;
+}

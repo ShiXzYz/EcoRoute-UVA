@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  ecoroute:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - UVA_LAT=38.0336
+      - UVA_LNG=-78.5080
+    volumes:
+      - ./.env:/app/.env
+    restart: unless-stopped

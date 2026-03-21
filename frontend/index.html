@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoRoute UVA - Sustainable Campus Transportation</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🌱 EcoRoute</h1>
+                <p class="subtitle">Real-time Sustainable Transportation for UVA</p>
+            </div>
+            <div class="weather-widget" id="weatherWidget">
+                <span id="weatherIcon">🌤️</span>
+                <span id="weatherTemp">--°F</span>
+                <span id="weatherCondition">Loading...</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="search-section">
+                    <input 
+                        type="text" 
+                        id="searchInput" 
+                        placeholder="Search routes..." 
+                        class="search-box"
+                    >
+                </div>
+
+                <!-- Routes List -->
+                <div class="section">
+                    <h3>🚌 Routes</h3>
+                    <div id="routesList" class="routes-list">
+                        <div class="loading">Loading routes...</div>
+                    </div>
+                </div>
+
+                <!-- Emissions Comparison -->
+                <div class="section">
+                    <h3>💨 Emissions Comparison</h3>
+                    <div class="distance-input">
+                        <input 
+                            type="number" 
+                            id="distanceInput" 
+                            placeholder="Distance (miles)" 
+                            value="2"
+                            min="0.1"
+                            step="0.1"
+                        >
+                        <button id="compareBtn" class="btn btn-small">Compare</button>
+                    </div>
+                    <div id="emissionsComparison" class="emissions-list">
+                        <div class="loading">Enter distance to compare</div>
+                    </div>
+                </div>
+
+                <!-- Impact Projection -->
+                <div class="section">
+                    <h3>🌍 Daily Impact</h3>
+                    <div id="impactProjection" class="impact-card">
+                        <p class="text-center">Calculate impact above →</p>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Map Section -->
+            <main class="map-section">
+                <div id="map" class="map-container"></div>
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <span class="legend-color" style="background-color: #FF6B35;"></span>
+                        <span>UVA Loop 1</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background-color: #004E89;"></span>
+                        <span>UVA Loop 2</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background-color: #1B998B;"></span>
+                        <span>CAT Route</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-marker">🚌</span>
+                        <span>Bus</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Details Panel -->
+        <div class="details-panel" id="detailsPanel">
+            <button class="close-btn" id="closeDetailsBtn">✕</button>
+            <div id="detailsContent"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
