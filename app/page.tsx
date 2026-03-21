@@ -140,31 +140,64 @@ export default function Home() {
     console.log('Logged trip:', { mode, gCO2e, streak: streak + 1 });
   };
 
-  const fetchDirections = async (selectedMode: string) => {
+  const fetchDirections = (selectedMode: string) => {
     if (!fromLocation || !toLocation) return;
 
     setRouteLoading(true);
-    try {
-      const origin = `${fromLocation.lat},${fromLocation.lng}`;
-      const destination = `${toLocation.lat},${toLocation.lng}`;
 
-      const response = await fetch(
-        `/api/directions?origin=${origin}&destination=${destination}&mode=${selectedMode}`
-      );
-      const data = await response.json();
-
-      if (data.routes && data.routes.length > 0) {
-        setRoute({
-          points: data.routes[0].points,
-          color: undefined,
-        });
+    // Wait for google to be available
+    const tryFetch = () => {
+      if (typeof window.google === 'undefined' || !window.google.maps) {
+        setTimeout(tryFetch, 100);
+        return;
       }
-    } catch (error) {
-      console.error('Error fetching directions:', error);
-      setRoute(null);
-    } finally {
-      setRouteLoading(false);
-    }
+
+      try {
+        const modeToTravelMode: Record<string, string> = {
+          walking: 'WALKING',
+          bike: 'BICYCLING',
+          ebike: 'BICYCLING',
+          ev: 'DRIVING',
+          solo_car: 'DRIVING',
+          carpool_2: 'DRIVING',
+          carpool_3: 'DRIVING',
+          cat_bus: 'TRANSIT',
+          uts_bus: 'TRANSIT',
+          trolley: 'TRANSIT',
+        };
+
+        const mode = modeToTravelMode[selectedMode] || 'DRIVING';
+        const directionsService = new window.google.maps.DirectionsService();
+
+        directionsService.route(
+          {
+            origin: new window.google.maps.LatLng(fromLocation.lat, fromLocation.lng),
+            destination: new window.google.maps.LatLng(toLocation.lat, toLocation.lng),
+            travelMode: (window.google.maps.TravelMode as any)[mode],
+          },
+          (result, status) => {
+            if (status === 'OK' && result) {
+              // eslint-disable-next-line
+              const polyline = result.routes[0].overview_polyline as any;
+              const path = polyline.getPath ? polyline.getPath() : polyline;
+              const points = window.google.maps.geometry.encoding.decodePath(path);
+              setRoute({
+                points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+                color: undefined,
+              });
+            } else {
+              console.error('Directions failed:', status);
+            }
+            setRouteLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error('Error fetching directions:', error);
+        setRouteLoading(false);
+      }
+    };
+
+    tryFetch();
   };
 
   const handleModeSelect = (mode: string) => {

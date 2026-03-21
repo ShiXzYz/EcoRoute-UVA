@@ -37,36 +37,39 @@ export async function GET(req: NextRequest) {
   const directionsMode = modeMap[mode] || 'driving';
 
   try {
-    const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
-    url.searchParams.set('origin', origin);
-    url.searchParams.set('destination', destination);
-    url.searchParams.set('mode', directionsMode);
-    url.searchParams.set('key', apiKey);
-
-    if (directionsMode === 'transit') {
-      url.searchParams.set('alternatives', 'true');
-    }
-
-    const response = await fetch(url.toString());
+    const response = await fetch(
+      `https://routes.googleapis.com/directions/v2:computeRoutes?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.distanceMeters,routes.duration',
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: parseFloat(origin.split(',')[0]), longitude: parseFloat(origin.split(',')[1]) } } },
+          destination: { location: { latLng: { latitude: parseFloat(destination.split(',')[0]), longitude: parseFloat(destination.split(',')[1]) } } },
+          travelMode: directionsMode.toUpperCase(),
+        }),
+      }
+    );
     const data = await response.json();
 
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      console.error('Directions API error:', data);
+    if (data.error) {
+      console.error('Routes API error:', data.error);
       return NextResponse.json(
-        { error: `Directions API error: ${data.status}`, details: data },
+        { error: data.error.message || 'Routes API error' },
         { status: 500 }
       );
     }
 
     const routes = (data.routes || []).map((route: any) => {
-      const points = route.overview_polyline.points;
-      const decodedPoints = decodePolyline(points);
+      const encodedPolyline = route.polyline?.encodedPolyline;
+      const decodedPoints = encodedPolyline ? decodePolyline(encodedPolyline) : [];
       
       return {
         points: decodedPoints,
-        distance: route.legs[0]?.distance?.value || 0,
-        duration: route.legs[0]?.duration?.value || 0,
-        summary: route.summary,
+        distance: route.distanceMeters || 0,
+        duration: route.duration || '0s',
       };
     });
 
