@@ -1,6 +1,6 @@
-# 🌱 EcoRoute — UVA Sustainable Transportation  
+# 🌱 EcoRoute-UVA — Sustainable Transportation @ UVA
 
-**Real-time behavioral nudges for low-carbon commuting.** Pick the green option before you even know you need to.
+**Map-based behavioral nudge for low-carbon commuting.** See your route. See the carbon cost. Choose green.
 
 ---
 
@@ -10,15 +10,15 @@ UVA's 2030 Climate Action Plan targets **net-zero Scope 3 (commuting) emissions*
 
 ## ✨ The Solution
 
-**EcoRoute** embeds three proven behavioral mechanics into a single app:
+**EcoRoute-UVA** embeds three proven behavioral mechanics into a map-native app:
 
-1. **Default Nudge** — The lowest-carbon option is pre-selected (green border). User must actively choose a worse option. ([Thaler & Sunstein, *Nudge*](https://en.wikipedia.org/wiki/Nudge_(book)))
+1. **Route Visualization** — Every transport mode (car, bike, bus, walk) is displayed on a live Google Map. Users see the exact path they'll take before committing.
 
-2. **Real-time CO₂ Feedback** — Every mode card displays grams of CO₂ and a visceral real-world equivalent ("like skipping 82 phone charges"). Powered by Claude API.
+2. **Default Nudge** — The lowest-carbon option is pre-selected (green border). User must actively choose a worse option. ([Thaler & Sunstein, *Nudge*](https://en.wikipedia.org/wiki/Nudge_(book)))
 
-3. **Streak Reinforcement** — Log a green trip → streak counter increments → day 7 unlocks "Green Hoo" badge. Identity-based motivation tied to UVA's institutional goals.
+3. **Impact Tracking** — Log a green trip → streak counter increments → day 7 unlocks "Green Hoo" badge. **Stats page** shows cumulative impact: tree equivalents, gas savings, 2030 progress.
 
-Result: Bus gets pre-selected. Carbon cost of driving solo is **always visible**. Habits compound over weeks.
+Result: Bus gets pre-selected AND user sees the route. Carbon cost and trip time comparison are **always visible**. Habits compound weekly, measured in trees.
 
 ---
 
@@ -26,23 +26,30 @@ Result: Bus gets pre-selected. Carbon cost of driving solo is **always visible**
 
 ### Prerequisites
 - Node.js 18+, npm 9+
-- Anthropic API key (Claude)
-- Optional: Google Maps API key, Supabase project
+- Google Maps API key (Directions + Places Autocomplete)
+- Optional: Supabase project for persistence
 
 ### Installation
 
 ```bash
-# 1. Clone the repo
-cd /Users/brian/Desktop/Projects/EcoRoute-UVA
+# 1. Clone and navigate
+cd EcoRoute-UVA
 
-# 2. Copy environment config
+# 2. Copy environment template
 cp .env.example .env.local
-# Edit .env.local and add your Anthropic API key
 
-# 3. Install dependencies
+# 3. Add your API keys to .env.local
+GOOGLE_MAPS_API_KEY=your_key_here
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+
+# 4. Install dependencies
 npm install
 
-# 4. Run development server
+# 5. Parse GTFS feeds (one-time setup)
+npm run parse-gtfs
+
+# 6. Run dev server
 npm run dev
 ```
 
@@ -50,54 +57,281 @@ Then open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 📐 Architecture
+## 📱 Features
+
+### GPS Page (Primary)
+- 🔍 **Google Places Autocomplete** — Search for origin/destination with smart address suggestions
+- 🗺️ **Interactive Map** — Displays origin (blue pin), destination (green pin), bus stops (orange pins)
+- 🚗🚴🚌 **Multi-mode Routing** — Google Maps polylines for car, bike, walk; GTFS stop markers for transit
+- 📊 **Rankable Mode Cards** — All options sorted by CO₂, lowest pre-selected
+- ⏱️ **Next Bus Time** — "Departs in 12 min at 10:45 AM" for transit options
+- 📍 **Trip Logger** — "I took this route today" button logs your choice
+
+### Stats Page (Secondary)
+- 🌳 **CO₂ to Trees** — "You saved X kg this week ≈ 2.1 trees grown per year"
+- 💰 **Gas Cost Savings** — "$12.50 saved on gas this week"
+- 🚌🚴 **Mode Breakdown** — "12 bus rides | 3 ebike trips this week"
+- 📈 **2030 Progress** — Your trips' % contribution to UVA's carbon neutrality goal
+- ✅ **Streak Tracker** — Consecutive days of green choices with "Green Hoo" badge at day 7
+
+---
+
+## 🏗️ Architecture
 
 ```
-Frontend (Next.js 14)
-├── /app/page.tsx          → Main trip input + results UI
+Frontend (Next.js 14 App Router + TypeScript)
+├── /app
+│   ├── page.tsx              → GPS page (map + search + modes)
+│   ├── stats/page.tsx        → Stats page (impact metrics)
+│   ├── layout.tsx            → Root layout + bottom tab nav
+│   └── api/
+│       ├── score/route.ts    → Calculate & rank all modes
+│       ├── log-trip/route.ts → Log trip, update streak
+│       └── directions/route.ts → Google Maps proxy
 ├── /components
-│   ├── TripForm.tsx       → Persona selector + origin/destination
-│   ├── ModeCards.tsx      → Results ranked by CO2
-│   ├── ModeCard.tsx       → Individual transportation card
-│   ├── StreakDisplay.tsx  → Streak counter with milestones
-│   └── UVAProgress.tsx    → Institutional framing
-└── /styles
-    └── globals.css        → Tailwind + UVA theme colors
-
-API Routes (Next.js TSX)
-├── /api/score            → Calculate CO2 for all modes (EPA factors)
-└── /api/explain          → Stream Claude explanation of choice
-
-Data Pipeline
-├── GTFS feeds (pre-parsed to JSON)
-│   ├── UVA: 23 routes, 108 stops
-│   └── CAT: X routes, Y stops
-└── Emission factors (hardcoded EPA 2023)
-
-Optional: Supabase Postgres
-└── trips + streaks tables (for persistence; localStorage fallback available)
+│   ├── SearchBar.tsx         → Google Places Autocomplete (FROM/TO)
+│   ├── MapSelector.tsx       → Google Maps display with markers + polylines
+│   ├── ModeCard.tsx          → Individual mode with CO2 + time + cost
+│   ├── ModeCards.tsx         → Container for ranked modes
+│   ├── SlideUpPanel.tsx      → Pullable bottom panel for mode selection
+│   ├── StreakDisplay.tsx     → Streak counter + badge
+│   ├── UVAProgress.tsx       → 2030 goal progress bar
+│   ├── StatCard.tsx          → Individual stat + icon (Stats page)
+│   └── BottomNav.tsx         → GPS | Stats tab switcher
+├── /lib
+│   ├── carbon.ts             → Emission factors + scoring
+│   ├── gtfs.ts               → Haversine + nearest-stops + departures
+│   ├── supabase.ts           → DB client
+│   ├── google-maps.ts        → Google Maps utilities
+│   └── impact-calculator.ts  → Tree math + gas savings + stats
+├── /data
+│   ├── gtfs-raw/             → Source GIT-IGNORED
+│   │   ├── University_Transit_Service_GTFS.zip
+│   │   ├── Charlottesvilleareatransit_GTFS.zip
+│   │   └── jaunt_connect_charlottesville.zip
+│   └── gtfs-parsed/          → Generated JSON (git-tracked)
+│       ├── uva-gtfs.json
+│       ├── cat-gtfs.json
+│       └── jaunt-gtfs.json
+└── /public
+    ├── manifest.json         → PWA manifest
+    └── icons/
+        ├── pin-blue.png      → Origin marker
+        ├── pin-green.png     → Destination marker
+        └── pin-orange.png    → Transit stops
 ```
 
 ---
 
 ## 🧮 Emission Factors (EPA 2023)
 
-| Mode | g CO₂/mile | Notes |
+| Mode | g CO₂e/mile | Notes |
 |------|-----------|-------|
 | Solo car | 400 | Average passenger vehicle |
-| Carpool (2) | 200 | 400 ÷ 2 |
-| Carpool (3+) | 133 | 400 ÷ 3 |
-| UTS bus | 44 | Transit bus÷ 45% load factor |
-| CAT bus | 44 | Same baseline |
+| UTS bus | 44 | Transit bus ÷ 45% load factor |
+| CAT bus | 44 | Charlottesville Area Transit |
 | CONNECT | 44 | Regional coach |
-| E-bike | 8 | Manufacturing amortized |
+| E-bike | 65 | VEO operations + manufacturing |
+| E-scooter | 70 | VEO operations + manufacturing |
 | Bike | 0 | Zero operational |
-| Walking | 0 | Zero operational |
-| EV (VA grid) | 120 | Virginia grid mix |
+| Walk | 0 | Zero operational |
+
+**All hardcoded in `lib/carbon.ts`.** Do not fetch from external sources.
 
 ---
 
-## 🎬 Demo Flow
+## 💡 Impact Math
+
+### Tree Equivalency (Stats Page)
+```
+Annual trees = (weekly_kgCO2 × 52 weeks) ÷ 60 kg/tree/year
+```
+EPA: One urban tree absorbs ~60 kg CO₂/year.
+
+**Example:** User saved 0.6 kg CO₂ this week
+- Annual projection: 0.6 × 52 = 31.2 kg
+- **Tree equivalents: 0.52 trees grown per year**
+
+### Gas Savings
+```
+USD saved = (car_miles_avoided ÷ 28 mpg) × $3.5/gallon
+```
+
+### Streak Logic
+- **Green modes only:** `uts_bus`, `cat_bus`, `connect_bus`, `bike`, `ebike`, `walk`, `escooter`
+- Solo car does NOT count
+- Resets if no green trip logged the next calendar day
+- Day 7 → "Green Hoo" badge unlocked
+
+---
+
+## 📡 API Endpoints
+
+See [API_DOCS.md](API_DOCS.md) for complete reference.
+
+### Main Endpoints
+- **`POST /api/score`** — Rank all modes for origin → destination
+- **`POST /api/log-trip`** — Log a completed trip, return streak
+- **`POST /api/directions`** — Google Maps proxy for polylines
+
+### Key Response
+```json
+{
+  "mode": "uts_bus",
+  "label": "UTS Bus (free)",
+  "gCO2e": 89,
+  "timeMin": 22,
+  "costUSD": 0,
+  "color": "green-600",
+  "icon": "bus",
+  "recommended": true,
+  "polyline": "encoded_polyline",
+  "nextDepartureTime": "10:45",
+  "minutesUntilDeparture": 12
+}
+```
+
+---
+
+## 🚌 How It Works: Per-Trip Flow
+
+```
+User: "From Old Dorms to Shannon Library"
+    ↓
+Places Autocomplete resolves to lat/lon
+    ↓
+/api/score called:
+  1. Google Directions API (DRIVING) → distance, duration, polyline
+  2. getNearestStops(origin_lat, origin_lon) → 2-4 UTS/CAT stops within 400m
+  3. getNearestStops(dest_lat, dest_lon) → 2-4 stops at destination
+  4. findConnectingStops() → which routes link origin → destination?
+  5. getNextDeparture() → next bus time for TODAY (service calendar aware)
+  6. scoreMode() for each: car, bike, walk, uts_bus, cat_bus, connect_bus
+    ↓
+Response: Array sorted by gCO2e (lowest first, recommended: true)
+    ↓
+Client renders:
+  - Map: 🔵 origin, 🟢 destination, 🟠 stop markers
+  - Cards: "UTS Bus 3 - Departs in 12 min - 89g CO2"
+    ↓
+User selects mode → Map updates with polyline/stops
+    ↓
+User taps "I took this route today"
+    ↓
+POST /api/log-trip:
+  - Creates trips table entry
+  - Upserts streaks table
+  - Returns: streak: 1, total_g_saved: 311, badgeUnlocked: false
+    ↓
+Stats page updates in real-time (localStorage, then Supabase sync)
+```
+
+---
+
+## ⚙️ GTFS Setup (One-time)
+
+UVA Transit, CAT, and JAUNT GTFS feeds are pre-downloaded. To parse them into JSON:
+
+```bash
+npm run parse-gtfs
+```
+
+This:
+1. Reads ZIP files from `data/gtfs-raw/`
+2. Extracts `stops.txt`, `routes.txt`, `stop_times.txt`, `calendar.txt`
+3. Filters departures by day-of-week using `calendar.txt` (no Sunday service bugs!)
+4. Generates `data/gtfs-parsed/{uva,cat,jaunt}-gtfs.json`
+
+**Why this approach?**
+- ⚡ No runtime API calls to transit agencies
+- 🚀 Instant haversine calculations (find nearest stops in milliseconds)
+- 📦 Portable: JSON files checked into git, ~2 MB each
+- 🔄 Update weekly: `npm run parse-gtfs && git add data/gtfs-parsed/`
+
+See [data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md) for details.
+
+---
+
+## 🎬 Demo Script (90 seconds)
+
+**Trip 1 — GPS Page:**
+- Origin: Old Dorms (~38.0245, -78.5018)
+- Destination: Shannon Library (~38.0336, -78.5080)
+- Expected: Walking or bike recommended; map shows blue + green pins + route
+- **Talking point:** "The exact route you'll take. Every mode visualized. Green pre-selected."
+
+**Trip 2 — Stats Page:**
+- After logging 5 demo trips with mixed modes
+- Show: "0.45 kg saved this week ≈ 0.39 trees" + gas + mode breakdown + 2030 progress
+- **Talking point:** "Impact compounds. Trees make it concrete; nobody plants trees, but seeing trees grown per year? That resonates."
+
+**Trip 3 — Transit Mode:**
+- Origin: Pantops (~38.0350, -78.4580)
+- Destination: UVA Health Main (~38.0418, -78.4983)
+- Expected: UTS Bus or CAT Route 7 with "Departs in 8 min"
+- **Talking point:** "Stop markers from GTFS. We don't need live APIs—the schedule is predictable. Safe, cached, always works."
+
+---
+
+## 📋 Checklist for Hackathon
+
+- [ ] `npm run parse-gtfs` generates JSON files successfully
+- [ ] `/api/score` returns modes with polylines + transit stops
+- [ ] GPS page renders blue/green/orange pins correctly
+- [ ] Mode cards show "Departs in X min" for transit
+- [ ] "I took this route" logs trip and updates streak
+- [ ] Stats page displays tree equivalency math correctly
+- [ ] No crashes if APIs fail (fallbacks in place)
+
+---
+
+## 🌍 Tech Stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 14 (App Router) + TypeScript |
+| Styling | Tailwind CSS |
+| Maps | Google Maps API (Directions + Places) |
+| Transit | GTFS JSON (pre-parsed) |
+| Weather | OpenWeatherMap (optional, 30-min cache) |
+| Database | Supabase Postgres (optional; `localStorage` fallback) |
+| Deployment | Vercel |
+
+---
+
+## 📖 Documentation
+
+- **[API_DOCS.md](API_DOCS.md)** — Complete API reference
+- **[ecoroute-context.md](ecoroute-context.md)** — Full UX/architecture spec
+- **[GTFS_IMPLEMENTATION_PLAN.md](GTFS_IMPLEMENTATION_PLAN.md)** — Bus stop marker feature plan
+- **[GTFS_HACKATHON_CHECKLIST.md](GTFS_HACKATHON_CHECKLIST.md)** — 3-hour implementation guide
+- **[data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md)** — GTFS file organization
+
+---
+
+## 🏆 Project Status
+
+**Status:** UVA Sustainable IT Hackathon (March 2026)  
+**Current phase:** Backend/frontend integration. Google Maps and GTFS routing in progress.  
+**Team:** 2 developers, 24-hour sprint.
+
+**What's working:**
+- ✅ Frontend scaffolding (Next.js 14, Tailwind, TypeScript)
+- ✅ GTFS file organization
+
+**What's in progress:**
+- 🔨 `/api/score` endpoint (Google Directions + GTFS logic)
+- 🔨 GPS page map component with markers
+- 🔨 Stats page impact math
+
+**What's next:**
+- Mode card time display ("Departs in X min")
+- Trip logging endpoint
+- Streak tracking UI
+
+---
+
+*EcoRoute-UVA: Map-based nudge for 2030. One route at a time.*
 
 **User enters:**
 - Persona: Student / Health Worker / Faculty  

@@ -7,3 +7,7 @@ dist/
 .idea/
 *.pem
 coverage/
+
+# GTFS raw feeds (large ZIP files, regenerated via parse-gtfs.js)
+data/gtfs-raw/
+data/gtfs-parsed/*.json

@@ -1,5 +1,25 @@
 'use client';
 
+/**
+ * GPS Page — Primary EcoRoute interaction surface
+ * 
+ * Users:
+ * 1. Enter origin + destination via Google Places Autocomplete (SearchBar)
+ * 2. Map displays:
+ *    - Blue pin: origin
+ *    - Green pin: destination
+ *    - Orange pins: nearest bus stops (from GTFS data)
+ * 3. Select from ranked transport options (car, bike, bus, walk)
+ * 4. Map updates with polyline (car/bike/walk) or stop markers (transit)
+ * 5. Log trip: "I took this route today" → streak updates
+ * 
+ * Architecture:
+ * - /api/score: Calculate & rank all modes (POST)
+ * - MapSelector: Google Maps display
+ * - SlideUpPanel: Pullable bottom sheet with mode cards
+ * - SearchBar: Google Places Autocomplete input
+ */
+
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
@@ -7,6 +27,10 @@ import SlideUpPanel from '@/components/SlideUpPanel';
 
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
+/**
+ * ModeScore extended with transit fields
+ * See API_DOCS.md for full reference
+ */
 interface ModeScore {
   mode: string;
   label: string;
@@ -16,6 +40,14 @@ interface ModeScore {
   recommended: boolean;
   icon: string;
   color: string;
+  polyline?: string;                           // Google Maps encoded polyline
+  bikeWarning?: boolean;
+  transitStops?: {                             // GTFS stop markers
+    origin: { id: string; lat: number; lon: number };
+    destination: { id: string; lat: number; lon: number };
+  };
+  nextDepartureTime?: string;                  // "HH:MM"
+  minutesUntilDeparture?: number;
 }
 
 interface Location {
@@ -24,6 +56,11 @@ interface Location {
   name: string;
 }
 
+/**
+ * Haversine distance calculation (miles)
+ * Used client-side for rough distance estimation
+ * Server calls Google Directions API for authoritative distance
+ */
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3959;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -38,21 +75,32 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 }
 
-export default function Home() {
+export default function GPSPage() {
+  // Trip state
   const [scores, setScores] = useState<ModeScore[] | null>(null);
-  const [baseline, setBaseline] = useState<number>(0);
   const [distance, setDistance] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [selectedModeData, setSelectedModeData] = useState<ModeScore | null>(null);
+
+  // Streak state (from localStorage or Supabase)
   const [streak, setStreak] = useState<number>(0);
+
+  // Search/location state
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(true);
   const [fromInput, setFromInput] = useState('');
   const [toInput, setToInput] = useState('');
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
 
+  // UI state
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(true);
+
+  /**
+   * Handle location selection from Google Places Autocomplete
+   * Once both origin and destination are selected, call /api/score
+   */
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
@@ -73,16 +121,18 @@ export default function Home() {
     }
   };
 
-  const handleSelectedTypeChange = (type: 'from' | 'to' | null) => {
-    setSelectedType(type);
-  };
-
+  /**
+   * Manually trigger search (in case user doesn't select auto suggestion)
+   */
   const handleSearch = async () => {
     if (fromLocation && toLocation) {
       await fetchScores(fromLocation, toLocation);
     }
   };
 
+  /**
+   * Swap origin and destination
+   */
   const handleSwap = () => {
     const tempLocation = fromLocation;
     const tempInput = fromInput;
@@ -90,61 +140,215 @@ export default function Home() {
     setToLocation(tempLocation);
     setFromInput(toInput);
     setToInput(tempInput);
-    if (fromLocation && toLocation) {
-      setSelectedType(null);
-    } else if (fromLocation) {
-      setSelectedType('to');
-    } else if (toLocation) {
-      setSelectedType('from');
-    }
   };
 
+  /**
+   * Call /api/score to get ranked transportation modes
+   * Response includes polylines, transit stops, and next departure times
+   */
   const fetchScores = async (from: Location, to: Location) => {
     setLoading(true);
     setSelectedMode(null);
+    setScores(null);
 
     try {
+      // Client-side distance (rough estimate for UI)
       const distance_miles = calculateDistance(from.lat, from.lng, to.lat, to.lng);
+      setDistance(distance_miles);
 
+      // Call server endpoint
       const response = await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: from.name,
-          destination: to.name,
-          distance_miles,
-          persona: 'Student',
-          weather: {
-            rain_probability: 10,
-            wind_speed: 8,
-          },
+          origin: `${from.lat},${from.lng}`,
+          destination: `${to.lat},${to.lng}`,
+          distance_miles,  // Passed for reference; server calls Google Directions for truth
         }),
       });
 
-      const data = await response.json();
-      setScores(data.scores);
-      setBaseline(data.baseline.solo_car_gco2e);
-      setDistance(distance_miles);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-      if (data.scores.length > 0) {
-        setSelectedMode(data.scores[0].mode);
+      const data = await response.json();
+      
+      // Response is array sorted by gCO2e, first item has recommended: true
+      setScores(data);
+
+      // Auto-select the recommended option (lowest CO₂)
+      if (data.length > 0 && data[0].recommended) {
+        setSelectedMode(data[0].mode);
+        setSelectedModeData(data[0]);
       }
 
       setPanelOpen(true);
     } catch (error) {
       console.error('Error scoring trip:', error);
+      alert('Failed to calculate routes. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogTrip = async (mode: string, gCO2e: number) => {
-    setStreak(streak + 1);
-    console.log('Logged trip:', { mode, gCO2e, streak: streak + 1 });
+  /**
+   * Handle mode selection from card
+   * Updates map with polyline or transit stop markers
+   */
+  const handleModeSelect = (mode: ModeScore) => {
+    setSelectedMode(mode.mode);
+    setSelectedModeData(mode);
+  };
+
+  /**
+   * Log a completed trip to Supabase
+   * Updates streak counter and stats page data
+   */
+  const handleLogTrip = async (mode: ModeScore) => {
+    const sessionId = typeof window !== 'undefined' 
+      ? localStorage.getItem('sessionId') || 'demo-user'
+      : 'demo-user';
+
+    try {
+      const response = await fetch('/api/log-trip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          mode: mode.mode,
+          gCO2e: mode.gCO2e,
+          distance_miles: distance,
+          time_min: mode.timeMin,
+        }),
+      });
+
+      const data = await response.json();
+      
+      // Update local streak counter
+      setStreak(data.streak);
+
+      // Show toast or badge unlock message
+      if (data.badgeUnlocked) {
+        alert('🎉 Green Hoo badge unlocked! 7-day streak achieved!');
+      }
+
+      console.log('Trip logged:', { mode: mode.mode, streak: data.streak });
+    } catch (error) {
+      console.error('Error logging trip:', error);
+    }
   };
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden">
+    <main className="relative h-screen w-screen overflow-hidden flex flex-col">
+      {/* Full-screen map display */}
+      <div className="flex-1 relative">
+        {fromLocation && toLocation && (
+          <MapSelector
+            origin={fromLocation}
+            destination={toLocation}
+            selectedMode={selectedModeData}
+          />
+        )}
+        {!fromLocation || !toLocation ? (
+          <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+            <p className="text-slate-500">Enter origin and destination to see routes</p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Top search bar — Google Places Autocomplete */}
+      <div className="absolute top-4 left-4 right-4 z-10">
+        <SearchBar
+          fromInput={fromInput}
+          toInput={toInput}
+          selectedType={selectedType}
+          onLocationSelect={handleLocationSelect}
+          onSearch={handleSearch}
+          onSwap={handleSwap}
+          onSelectedTypeChange={(type) => setSelectedType(type)}
+        />
+      </div>
+
+      {/* Bottom panel — Mode cards (pullable) */}
+      {panelOpen && (
+        <SlideUpPanel
+          isExpanded={panelExpanded}
+          onToggle={() => setPanelExpanded(!panelExpanded)}
+        >
+          {loading ? (
+            <div className="p-4 text-center">
+              <p>Calculating routes...</p>
+            </div>
+          ) : scores && scores.length > 0 ? (
+            <div className="space-y-3 p-4">
+              {scores.map((mode) => (
+                <div
+                  key={mode.mode}
+                  onClick={() => handleModeSelect(mode)}
+                  className={`p-4 rounded-lg cursor-pointer border-2 transition ${
+                    selectedMode === mode.mode
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className={`font-bold text-sm ${mode.recommended ? 'text-green-600' : ''}`}>
+                        {mode.label}
+                        {mode.recommended && ' ✓'}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {mode.timeMin} min{mode.nextDepartureTime && ` • ${mode.nextDepartureTime}`}
+                      </p>
+                      {mode.minutesUntilDeparture !== undefined && (
+                        <p className="text-xs text-amber-600 font-semibold">
+                          Departs in {mode.minutesUntilDeparture} min
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xl font-bold ${mode.color}`}>
+                        {mode.gCO2e}g
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {mode.costUSD > 0 ? `$${mode.costUSD}` : 'FREE'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedMode === mode.mode && (
+                    <button
+                      onClick={() => handleLogTrip(mode)}
+                      className="mt-3 w-full bg-green-600 text-white py-2 rounded font-semibold"
+                    >
+                      I took this route today →
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </SlideUpPanel>
+      )}
+
+      {/* Bottom tab bar — GPS | Stats */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex">
+        <a
+          href="/"
+          className="flex-1 py-3 text-center font-semibold text-green-600 border-b-2 border-green-600"
+        >
+          📍 GPS
+        </a>
+        <a
+          href="/stats"
+          className="flex-1 py-3 text-center font-semibold text-slate-600"
+        >
+          📊 Stats
+        </a>
+      </nav>
+    </main>
+  );
+}
       {/* Full Screen Map - with low z-index */}
       <div 
         className="absolute inset-0" 
