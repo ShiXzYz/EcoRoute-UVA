@@ -22,6 +22,7 @@ interface Location {
   lat: number;
   lng: number;
   name: string;
+  displayName?: string;
 }
 
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -49,18 +50,14 @@ export default function Home() {
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(true);
-  const [fromInput, setFromInput] = useState('');
-  const [toInput, setToInput] = useState('');
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
-      setFromInput(location.name);
       setSelectedType('to');
     } else {
       setToLocation(location);
-      setToInput(location.name);
       setSelectedType(null);
     }
 
@@ -77,19 +74,10 @@ export default function Home() {
     setSelectedType(type);
   };
 
-  const handleSearch = async () => {
-    if (fromLocation && toLocation) {
-      await fetchScores(fromLocation, toLocation);
-    }
-  };
-
   const handleSwap = () => {
     const tempLocation = fromLocation;
-    const tempInput = fromInput;
     setFromLocation(toLocation);
     setToLocation(tempLocation);
-    setFromInput(toInput);
-    setToInput(tempInput);
     if (fromLocation && toLocation) {
       setSelectedType(null);
     } else if (fromLocation) {
@@ -170,10 +158,8 @@ export default function Home() {
           toLocation={toLocation}
           selectedType={selectedType}
           onSelectedTypeChange={handleSelectedTypeChange}
-          onFromChange={(e) => setFromInput(e.target.value)}
-          onToChange={(e) => setToInput(e.target.value)}
+          onLocationSelect={handleLocationSelect}
           onSwap={handleSwap}
-          onSearch={handleSearch}
         />
       </div>
 
@@ -192,7 +178,7 @@ export default function Home() {
         <div className="absolute bottom-8 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
           <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3">
             <p className="text-sm text-slate-700">
-              <span className="font-medium">Tip:</span> Tap the blue dot to set start, red dot for destination.
+              <span className="font-medium">Tip:</span> Search for a location or tap on the map.
             </p>
           </div>
         </div>
