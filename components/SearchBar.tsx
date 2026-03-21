@@ -30,8 +30,10 @@ export default function SearchBar({
   const { isLoaded, loadError } = useGoogleMaps();
   const inputFromRef = useRef<HTMLInputElement>(null);
   const inputToRef = useRef<HTMLInputElement>(null);
-  const autocompleteFromRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const autocompleteToRef = useRef<google.maps.places.Autocomplete | null>(null);
+  // eslint-disable-next-line
+  const autocompleteFromRef = useRef<any>(null);
+  // eslint-disable-next-line
+  const autocompleteToRef = useRef<any>(null);
 
   useEffect(() => {
     if (!isLoaded || !inputFromRef.current || !inputToRef.current) return;
@@ -41,7 +43,7 @@ export default function SearchBar({
       { lat: 38.2, lng: -78.0 }
     );
 
-    const options: google.maps.places.AutocompleteOptions = {
+    const options = {
       bounds: bounds,
       strictBounds: true,
       componentRestrictions: { country: 'us' },

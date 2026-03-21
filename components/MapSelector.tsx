@@ -36,7 +36,8 @@ export default function MapSelector({
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  // eslint-disable-next-line
+  const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
@@ -52,6 +53,7 @@ export default function MapSelector({
       zoom: 14,
       disableDefaultUI: false,
       zoomControl: true,
+      mapId: '27ee17fe3338eb9aeeeff1a2',
     });
 
     mapInstanceRef.current = map;
@@ -121,20 +123,18 @@ export default function MapSelector({
     const map = mapInstanceRef.current;
 
     if (fromLocation) {
-      const fromMarker = new google.maps.Marker({
+      const fromMarker = new google.maps.marker.AdvancedMarkerElement({
         map,
         position: { lat: fromLocation.lat, lng: fromLocation.lng },
-        label: 'A',
         title: 'From: ' + fromLocation.name,
       });
       markersRef.current.push(fromMarker);
     }
 
     if (toLocation) {
-      const toMarker = new google.maps.Marker({
+      const toMarker = new google.maps.marker.AdvancedMarkerElement({
         map,
         position: { lat: toLocation.lat, lng: toLocation.lng },
-        label: 'B',
         title: 'To: ' + toLocation.name,
       });
       markersRef.current.push(toMarker);
