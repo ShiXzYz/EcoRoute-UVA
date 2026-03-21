@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ModeCard from './ModeCard';
 
 interface ModeScore {
@@ -26,12 +26,6 @@ interface SlideUpPanelProps {
   onLogTrip: (mode: string, gCO2e: number) => void;
 }
 
-const SNAP_HEIGHTS = {
-  closed: 0,
-  small: typeof window !== 'undefined' ? window.innerHeight * 0.2 : 200,
-  large: typeof window !== 'undefined' ? window.innerHeight * 0.85 : 600,
-};
-
 export default function SlideUpPanel({
   modes,
   selectedMode,
@@ -42,11 +36,18 @@ export default function SlideUpPanel({
   onSelect,
   onLogTrip,
 }: SlideUpPanelProps) {
-  const [currentHeight, setCurrentHeight] = useState(SNAP_HEIGHTS.small);
+  const [currentHeight, setCurrentHeight] = useState(window.innerHeight * 0.25);
   const [expanded, setExpanded] = useState(false);
   const startY = useRef(0);
   const startHeight = useRef(0);
   const isDragging = useRef(false);
+  const lastTap = useRef(0);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentHeight(window.innerHeight * 0.25);
+    }
+  }, [isOpen]);
 
   const handleModeSelect = (mode: ModeScore) => {
     onSelect(mode.mode);
@@ -57,15 +58,18 @@ export default function SlideUpPanel({
     ? Math.round((savings / baseline) * 100) 
     : 0;
 
+  const getSnapHeights = () => ({
+    snapSmall: window.innerHeight * 0.25,
+    snapLarge: window.innerHeight * 0.8,
+  });
+
   const snapToPosition = (newHeight: number) => {
-    const windowHeight = window.innerHeight;
-    const snapSmall = windowHeight * 0.2;
-    const snapLarge = windowHeight * 0.8;
+    const { snapSmall, snapLarge } = getSnapHeights();
     
-    if (newHeight < snapSmall * 0.6) {
+    if (newHeight < 50) {
       setCurrentHeight(0);
       setTimeout(onClose, 300);
-    } else if (newHeight < snapSmall + (snapLarge - snapSmall) * 0.4) {
+    } else if (newHeight < snapSmall + (snapLarge - snapSmall) * 0.3) {
       setCurrentHeight(snapSmall);
       setExpanded(false);
     } else {
@@ -82,7 +86,7 @@ export default function SlideUpPanel({
 
   const handleDragMove = (clientY: number) => {
     if (!isDragging.current) return;
-    const delta = startY.current - clientY;
+    const delta = (startY.current - clientY) * 1.5;
     const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.95);
     setCurrentHeight(newHeight);
   };
@@ -93,27 +97,47 @@ export default function SlideUpPanel({
     snapToPosition(currentHeight);
   };
 
+  const handleTap = () => {
+    const now = Date.now();
+    if (now - lastTap.current < 300) return;
+    lastTap.current = now;
+    
+    if (expanded) {
+      const { snapSmall } = getSnapHeights();
+      setCurrentHeight(snapSmall);
+      setExpanded(false);
+    } else {
+      const { snapLarge } = getSnapHeights();
+      setCurrentHeight(snapLarge);
+      setExpanded(true);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 z-50"
+      className="fixed bottom-0 left-0 right-0 z-50 px-2 sm:px-4"
       style={{
         height: `${currentHeight}px`,
         transition: isDragging.current ? 'none' : 'height 0.3s ease-out',
       }}
     >
-      <div className="h-full bg-white rounded-t-3xl shadow-2xl overflow-hidden">
-        {/* Drag Handle */}
+      <div className="h-full bg-white rounded-t-3xl shadow-2xl overflow-hidden flex flex-col">
+        {/* Drag Handle + Tap area */}
         <div 
-          className="flex justify-center py-3 cursor-grab active:cursor-grabbing select-none"
-          onMouseDown={(e) => handleDragStart(e.clientY)}
-          onMouseMove={(e) => {
-            if (isDragging.current) handleDragMove(e.clientY);
-          }}
-          onMouseUp={handleDragEnd}
-          onMouseLeave={() => {
-            if (isDragging.current) handleDragEnd();
+          className="flex flex-col items-center cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            handleDragStart(e.clientY);
+            const onMouseMove = (ev: MouseEvent) => handleDragMove(ev.clientY);
+            const onMouseUp = () => {
+              handleDragEnd();
+              document.removeEventListener('mousemove', onMouseMove);
+              document.removeEventListener('mouseup', onMouseUp);
+            };
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
           }}
           onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
           onTouchMove={(e) => {
@@ -123,23 +147,24 @@ export default function SlideUpPanel({
             }
           }}
           onTouchEnd={handleDragEnd}
+          onClick={handleTap}
         >
-          <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+          <div className="w-12 h-1.5 bg-slate-300 rounded-full mt-3 mb-1" />
         </div>
 
         {/* Header */}
-        <div className="px-5 pb-3 border-b border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                {modes.length > 0 ? `${modes.length} routes found` : 'Select a route'}
+              <h2 className="text-base font-semibold text-slate-900">
+                {modes.length > 0 ? `${modes.length} routes` : 'Select a route'}
               </h2>
-              <p className="text-sm text-slate-500">{distance.toFixed(1)} miles</p>
+              <p className="text-xs text-slate-500">{distance.toFixed(1)} miles</p>
             </div>
             {selectedMode && savings > 0 && (
-              <div className="bg-green-50 px-3 py-1.5 rounded-full">
-                <span className="text-green-600 font-medium text-sm">
-                  Save {savingsPercent}% CO₂
+              <div className="bg-green-50 px-2 py-1 rounded-full">
+                <span className="text-green-600 font-medium text-xs">
+                  -{savingsPercent}% CO₂
                 </span>
               </div>
             )}
@@ -147,9 +172,9 @@ export default function SlideUpPanel({
         </div>
 
         {/* Content - Scrollable */}
-        <div className="overflow-y-auto h-full px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3">
           {modes.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {modes.map((mode) => (
                 <ModeCard
                   key={mode.mode}
@@ -162,8 +187,8 @@ export default function SlideUpPanel({
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-slate-500">
-              <p>No routes found. Try different locations.</p>
+            <div className="text-center py-6 text-slate-500">
+              <p className="text-sm">No routes found</p>
             </div>
           )}
         </div>

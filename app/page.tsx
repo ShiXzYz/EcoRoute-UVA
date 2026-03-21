@@ -155,7 +155,7 @@ export default function Home() {
       </div>
 
       {/* Search Bar - Floating at top with high z-index */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
+      <div className="absolute top-4 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-xl" style={{ zIndex: 100 }}>
         <SearchBar
           fromLocation={fromLocation}
           toLocation={toLocation}
@@ -170,18 +170,18 @@ export default function Home() {
 
       {/* Streak Badge - Top Right */}
       {streak > 0 && (
-        <div className="absolute top-4 right-4" style={{ zIndex: 100 }}>
-          <div className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-2">
-            <span className="text-xl">🔥</span>
-            <span className="font-bold text-uva-primary">{streak}</span>
+        <div className="absolute top-4 right-2 sm:right-4" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-full shadow-lg px-3 py-2 flex items-center gap-2">
+            <span className="text-lg">🔥</span>
+            <span className="font-bold text-uva-primary text-sm">{streak}</span>
           </div>
         </div>
       )}
 
       {/* Instructions - Bottom Left */}
       {!fromLocation && !panelOpen && (
-        <div className="absolute bottom-8 left-4" style={{ zIndex: 100 }}>
-          <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3 max-w-xs">
+        <div className="absolute bottom-8 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
+          <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3">
             <p className="text-sm text-slate-700">
               <span className="font-medium">Tip:</span> Tap the blue dot to set start, red dot for destination.
             </p>
