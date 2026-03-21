@@ -11,6 +11,8 @@ interface Location {
 interface SearchBarProps {
   fromLocation: Location | null;
   toLocation: Location | null;
+  selectedType: 'from' | 'to' | null;
+  onSelectedTypeChange: (type: 'from' | 'to' | null) => void;
   onFromChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onToChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSwap: () => void;
@@ -20,6 +22,8 @@ interface SearchBarProps {
 export default function SearchBar({
   fromLocation,
   toLocation,
+  selectedType,
+  onSelectedTypeChange,
   onFromChange,
   onToChange,
   onSwap,
@@ -28,27 +32,63 @@ export default function SearchBar({
   return (
     <div className="bg-white rounded-2xl shadow-2xl p-3 w-full max-w-xl">
       <div className="flex flex-col gap-2">
-        {/* From Input */}
+        {/* From/To with clickable dots */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-uva-accent border-2 border-white shadow" />
+            {/* From dot - clickable */}
+            <button
+              type="button"
+              onClick={() => onSelectedTypeChange(selectedType === 'from' ? null : 'from')}
+              className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer ${
+                selectedType === 'from' 
+                  ? 'bg-uva-accent border-uva-accent scale-125 shadow-lg ring-2 ring-uva-accent ring-offset-1' 
+                  : fromLocation
+                    ? 'bg-uva-accent border-uva-accent'
+                    : 'bg-white border-slate-300 hover:border-uva-accent'
+              }`}
+            />
             <div className="w-0.5 h-8 bg-slate-300" />
-            <div className="w-3 h-3 rounded-full bg-eco-red border-2 border-white shadow" />
+            {/* To dot - clickable */}
+            <button
+              type="button"
+              onClick={() => onSelectedTypeChange(selectedType === 'to' ? null : 'to')}
+              className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer ${
+                selectedType === 'to' 
+                  ? 'bg-eco-red border-eco-red scale-125 shadow-lg ring-2 ring-eco-red ring-offset-1' 
+                  : toLocation
+                    ? 'bg-eco-red border-eco-red'
+                    : 'bg-white border-slate-300 hover:border-eco-red'
+              }`}
+            />
           </div>
           <div className="flex-1">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder={selectedType === 'to' ? 'Tap map or click blue dot' : 'Tap map or click blue dot for start'}
+                value={fromLocation?.name || ''}
+                onChange={onFromChange}
+                onFocus={() => onSelectedTypeChange('from')}
+                readOnly
+                className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all cursor-pointer ${
+                  selectedType === 'from' 
+                    ? 'border-uva-accent ring-2 ring-uva-accent ring-opacity-30 bg-blue-50' 
+                    : 'border-slate-200 bg-white'
+                }`}
+              />
+            </div>
             <input
               type="text"
-              placeholder="Choose starting point"
-              value={fromLocation?.name || ''}
-              onChange={onFromChange}
-              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-uva-accent focus:border-transparent"
-            />
-            <input
-              type="text"
-              placeholder="Choose destination"
+              placeholder={selectedType === 'to' ? 'Tap map or click red dot' : 'Tap map or click red dot for destination'}
               value={toLocation?.name || ''}
               onChange={onToChange}
-              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-uva-accent focus:border-transparent mt-2"
+              onFocus={() => onSelectedTypeChange('to')}
+              readOnly
+              className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all cursor-pointer mt-2 ${
+                selectedType === 'to' 
+                  ? 'border-eco-red ring-2 ring-eco-red ring-opacity-30 bg-red-50' 
+                  : 'border-slate-200 bg-white'
+              }`}
             />
           </div>
           <button
@@ -61,6 +101,17 @@ export default function SearchBar({
             </svg>
           </button>
         </div>
+
+        {/* Selection indicator */}
+        {selectedType && (
+          <div className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
+            selectedType === 'from' 
+              ? 'bg-blue-100 text-blue-700' 
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {selectedType === 'from' ? '📍 Tap on map to set starting point' : '📍 Tap on map to set destination'}
+          </div>
+        )}
 
         {/* Search Button */}
         <button

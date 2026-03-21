@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import SlideUpPanel from '@/components/SlideUpPanel';
@@ -50,14 +50,17 @@ export default function Home() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [fromInput, setFromInput] = useState('');
   const [toInput, setToInput] = useState('');
+  const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
       setFromInput(location.name);
+      setSelectedType('to');
     } else {
       setToLocation(location);
       setToInput(location.name);
+      setSelectedType(null);
     }
 
     const otherLocation = type === 'from' ? toLocation : fromLocation;
@@ -67,6 +70,10 @@ export default function Home() {
         type === 'to' ? location : toLocation!
       );
     }
+  };
+
+  const handleSelectedTypeChange = (type: 'from' | 'to' | null) => {
+    setSelectedType(type);
   };
 
   const handleSearch = async () => {
@@ -82,6 +89,13 @@ export default function Home() {
     setToLocation(tempLocation);
     setFromInput(toInput);
     setToInput(tempInput);
+    if (fromLocation && toLocation) {
+      setSelectedType(null);
+    } else if (fromLocation) {
+      setSelectedType('to');
+    } else if (toLocation) {
+      setSelectedType('from');
+    }
   };
 
   const fetchScores = async (from: Location, to: Location) => {
@@ -130,20 +144,23 @@ export default function Home() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
-      {/* Full Screen Map */}
-      <div className="absolute inset-0 z-0">
+      {/* Full Screen Map - with low z-index */}
+      <div className="absolute inset-0" style={{ zIndex: 1 }}>
         <MapSelector
           onLocationSelect={handleLocationSelect}
           fromLocation={fromLocation}
           toLocation={toLocation}
+          selectedType={selectedType}
         />
       </div>
 
-      {/* Search Bar - Floating at top */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4">
+      {/* Search Bar - Floating at top with high z-index */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
         <SearchBar
           fromLocation={fromLocation}
           toLocation={toLocation}
+          selectedType={selectedType}
+          onSelectedTypeChange={handleSelectedTypeChange}
           onFromChange={(e) => setFromInput(e.target.value)}
           onToChange={(e) => setToInput(e.target.value)}
           onSwap={handleSwap}
@@ -153,26 +170,32 @@ export default function Home() {
 
       {/* Streak Badge - Top Right */}
       {streak > 0 && (
-        <div className="absolute top-4 right-4 z-20 bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-2">
-          <span className="text-xl">🔥</span>
-          <span className="font-bold text-uva-primary">{streak}</span>
+        <div className="absolute top-4 right-4" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-2">
+            <span className="text-xl">🔥</span>
+            <span className="font-bold text-uva-primary">{streak}</span>
+          </div>
         </div>
       )}
 
       {/* Instructions - Bottom Left */}
       {!fromLocation && !panelOpen && (
-        <div className="absolute bottom-8 left-4 z-20 bg-white bg-opacity-90 backdrop-blur rounded-lg shadow-lg px-4 py-3 max-w-xs">
-          <p className="text-sm text-slate-700">
-            <span className="font-medium">Tip:</span> Click on the map to select your starting point, then your destination.
-          </p>
+        <div className="absolute bottom-8 left-4" style={{ zIndex: 100 }}>
+          <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3 max-w-xs">
+            <p className="text-sm text-slate-700">
+              <span className="font-medium">Tip:</span> Tap the blue dot to set start, red dot for destination.
+            </p>
+          </div>
         </div>
       )}
 
       {/* Loading Indicator */}
       {loading && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-white rounded-full shadow-lg px-6 py-4 flex items-center gap-3">
-          <div className="w-5 h-5 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-slate-700 font-medium">Finding routes...</span>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-full shadow-lg px-6 py-4 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
+            <span className="text-slate-700 font-medium">Finding routes...</span>
+          </div>
         </div>
       )}
 

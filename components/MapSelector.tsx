@@ -12,12 +12,14 @@ interface MapSelectorProps {
   onLocationSelect: (location: Location, type: 'from' | 'to') => void;
   fromLocation: Location | null;
   toLocation: Location | null;
+  selectedType: 'from' | 'to' | null;
 }
 
 export default function MapSelector({
   onLocationSelect,
   fromLocation,
   toLocation,
+  selectedType,
 }: MapSelectorProps) {
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -77,16 +79,20 @@ export default function MapSelector({
       const locationName = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       const location: Location = { lat, lng, name: locationName };
 
-      if (!fromLocation) {
-        onLocationSelect(location, 'from');
+      const type = selectedType || (!fromLocation ? 'from' : 'to');
+      
+      if (type === 'from') {
+        if (fromMarkerRef.current) fromMarkerRef.current.remove();
         fromMarkerRef.current = L.marker([lat, lng], { icon: fromIcon })
           .bindPopup(`<strong>From:</strong> ${locationName}`)
           .addTo(map);
-      } else if (!toLocation) {
-        onLocationSelect(location, 'to');
+        onLocationSelect(location, 'from');
+      } else {
+        if (toMarkerRef.current) toMarkerRef.current.remove();
         toMarkerRef.current = L.marker([lat, lng], { icon: toIcon })
           .bindPopup(`<strong>To:</strong> ${locationName}`)
           .addTo(map);
+        onLocationSelect(location, 'to');
 
         if (fromMarkerRef.current) {
           if (routeLineRef.current) {
@@ -103,18 +109,6 @@ export default function MapSelector({
           const bounds = routeLineRef.current.getBounds();
           map.fitBounds(bounds.pad(0.2));
         }
-      } else {
-        if (fromMarkerRef.current) fromMarkerRef.current.remove();
-        if (toMarkerRef.current) toMarkerRef.current.remove();
-        if (routeLineRef.current) routeLineRef.current.remove();
-        
-        fromMarkerRef.current = L.marker([lat, lng], { icon: fromIcon })
-          .bindPopup(`<strong>From:</strong> ${locationName}`)
-          .addTo(map);
-        toMarkerRef.current = null;
-        routeLineRef.current = null;
-        
-        onLocationSelect(location, 'from');
       }
     };
 
@@ -123,9 +117,34 @@ export default function MapSelector({
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [L, fromLocation, toLocation, onLocationSelect]);
+  }, [L, fromLocation, toLocation, selectedType, onLocationSelect]);
+
+  // Update route line when markers change
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+    if (!fromLocation || !toLocation) return;
+    
+    const map = mapRef.current;
+    
+    // Remove old line
+    if (routeLineRef.current) {
+      routeLineRef.current.remove();
+    }
+    
+    // Draw new line
+    routeLineRef.current = L.polyline(
+      [
+        [fromLocation.lat, fromLocation.lng],
+        [toLocation.lat, toLocation.lng],
+      ],
+      { color: '#00A3E0', weight: 4, opacity: 0.8, dashArray: '10, 10' }
+    ).addTo(map);
+
+    const bounds = routeLineRef.current.getBounds();
+    map.fitBounds(bounds.pad(0.2));
+  }, [L, fromLocation, toLocation]);
 
   return (
-    <div ref={mapContainerRef} className="w-full h-full" />
+    <div ref={mapContainerRef} className="w-full h-full" style={{ zIndex: 1 }} />
   );
 }
