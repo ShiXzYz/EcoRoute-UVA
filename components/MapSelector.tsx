@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useJsApiLoader } from '@react-google-maps/api';
+import { useGoogleMaps } from '@/lib/GoogleMapsContext';
 
 interface Location {
   lat: number;
@@ -33,19 +33,15 @@ export default function MapSelector({
   toLocation,
   selectedType,
 }: MapSelectorProps) {
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-  });
-
+  const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  
-  // Rate limiting for geocoding
+  const [mapReady, setMapReady] = useState(false);
+
   const lastGeocodeTime = useRef<number>(0);
-  const GEOCODE_COOLDOWN = 1000; // 1 second between geocode requests
+  const GEOCODE_COOLDOWN = 1000;
   const geocodeCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -56,59 +52,51 @@ export default function MapSelector({
       zoom: 14,
       disableDefaultUI: false,
       zoomControl: true,
-      mapId: 'DEMO_MAP_ID',
     });
 
     mapInstanceRef.current = map;
-    setMapLoaded(true);
+    setMapReady(true);
 
     map.addListener('click', async (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
-      
+
       const lat = e.latLng.lat();
       const lng = e.latLng.lng();
       const type = selectedType || (!fromLocation ? 'from' : 'to');
 
-      // Cache key for this location
       const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-      
-      // Check cache first
+
       if (geocodeCache.current.has(cacheKey)) {
         const cachedName = geocodeCache.current.get(cacheKey)!;
         onLocationSelect({ lat, lng, name: cachedName, displayName: cachedName }, type);
         return;
       }
 
-      // Rate limiting
       const now = Date.now();
       if (now - lastGeocodeTime.current < GEOCODE_COOLDOWN) {
-        // Just use coordinates without geocoding
         const name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         onLocationSelect({ lat, lng, name, displayName: name }, type);
         return;
       }
       lastGeocodeTime.current = now;
 
-      // Reverse geocode via API
       try {
         const response = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
         const data = await response.json();
-        
+
         let name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         if (data.results && data.results[0]) {
           name = data.results[0].formatted_address;
         }
-        
-        // Cache the result
+
         geocodeCache.current.set(cacheKey, name);
         if (geocodeCache.current.size > 100) {
           const firstKey = geocodeCache.current.keys().next().value;
           if (firstKey) geocodeCache.current.delete(firstKey);
         }
-        
+
         onLocationSelect({ lat, lng, name, displayName: name }, type);
       } catch (error) {
-        // Fallback to coordinates
         const name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         onLocationSelect({ lat, lng, name, displayName: name }, type);
       }
@@ -122,10 +110,9 @@ export default function MapSelector({
   }, [isLoaded, onLocationSelect, selectedType, fromLocation]);
 
   useEffect(() => {
-    if (!mapLoaded || !mapInstanceRef.current) return;
+    if (!mapReady || !mapInstanceRef.current) return;
 
-    // Clear old markers
-    markersRef.current.forEach(marker => marker.map = null);
+    markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
@@ -133,26 +120,26 @@ export default function MapSelector({
 
     const map = mapInstanceRef.current;
 
-    // Add markers using AdvancedMarkerElement
     if (fromLocation) {
-      const fromMarker = new google.maps.marker.AdvancedMarkerElement({
+      const fromMarker = new google.maps.Marker({
         map,
         position: { lat: fromLocation.lat, lng: fromLocation.lng },
+        label: 'A',
         title: 'From: ' + fromLocation.name,
       });
       markersRef.current.push(fromMarker);
     }
 
     if (toLocation) {
-      const toMarker = new google.maps.marker.AdvancedMarkerElement({
+      const toMarker = new google.maps.Marker({
         map,
         position: { lat: toLocation.lat, lng: toLocation.lng },
+        label: 'B',
         title: 'To: ' + toLocation.name,
       });
       markersRef.current.push(toMarker);
     }
 
-    // Draw route line
     if (fromLocation && toLocation) {
       polylineRef.current = new google.maps.Polyline({
         path: [
@@ -165,13 +152,12 @@ export default function MapSelector({
         map,
       });
 
-      // Fit bounds
       const bounds = new google.maps.LatLngBounds();
       bounds.extend({ lat: fromLocation.lat, lng: fromLocation.lng });
       bounds.extend({ lat: toLocation.lat, lng: toLocation.lng });
       map.fitBounds(bounds, 50);
     }
-  }, [mapLoaded, fromLocation, toLocation]);
+  }, [mapReady, fromLocation, toLocation]);
 
   if (loadError) {
     return (

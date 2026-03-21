@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { useGoogleMaps } from '@/lib/GoogleMapsContext';
 
 interface Location {
   lat: number;
@@ -26,112 +27,87 @@ export default function SearchBar({
   onLocationSelect,
   onSwap,
 }: SearchBarProps) {
-  const [queryFrom, setQueryFrom] = useState('');
-  const [queryTo, setQueryTo] = useState('');
-  const [suggestionsFrom, setSuggestionsFrom] = useState<Location[]>([]);
-  const [suggestionsTo, setSuggestionsTo] = useState<Location[]>([]);
-  const [showFrom, setShowFrom] = useState(false);
-  const [showTo, setShowTo] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const debounceFrom = useRef<NodeJS.Timeout>();
-  const debounceTo = useRef<NodeJS.Timeout>();
+  const { isLoaded, loadError } = useGoogleMaps();
   const inputFromRef = useRef<HTMLInputElement>(null);
   const inputToRef = useRef<HTMLInputElement>(null);
-  
-  // Cache to reduce API calls
-  const cache = useRef<Map<string, Location[]>>(new Map());
-  
-  // Rate limiting
-  const lastSearchTime = useRef<number>(0);
-  const MIN_SEARCH_INTERVAL = 300; // ms between searches
+  const autocompleteFromRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const autocompleteToRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-  const searchPlaces = async (query: string, setSuggestions: (locs: Location[]) => void) => {
-    if (query.length < 2) {
-      setSuggestions([]);
-      return;
-    }
+  useEffect(() => {
+    if (!isLoaded || !inputFromRef.current || !inputToRef.current) return;
 
-    // Check cache first
-    const cacheKey = query.toLowerCase();
-    if (cache.current.has(cacheKey)) {
-      setSuggestions(cache.current.get(cacheKey)!);
-      return;
-    }
+    const bounds = new google.maps.LatLngBounds(
+      { lat: 37.7, lng: -79.0 },
+      { lat: 38.2, lng: -78.0 }
+    );
 
-    // Rate limiting
-    const now = Date.now();
-    if (now - lastSearchTime.current < MIN_SEARCH_INTERVAL) {
-      return;
-    }
-    lastSearchTime.current = now;
+    const options: google.maps.places.AutocompleteOptions = {
+      bounds: bounds,
+      strictBounds: true,
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components', 'geometry', 'name', 'formatted_address'],
+    };
 
-    setIsSearching(true);
-    try {
-      const response = await fetch(
-        `/api/places?query=${encodeURIComponent(query)}`
-      );
-      const data = await response.json();
-      
-      if (data.results) {
-        const results = data.results.slice(0, 5).map((place: any) => ({
-          lat: place.geometry.location.lat,
-          lng: place.geometry.location.lng,
-          name: place.name,
+    autocompleteFromRef.current = new google.maps.places.Autocomplete(inputFromRef.current, options);
+    autocompleteToRef.current = new google.maps.places.Autocomplete(inputToRef.current, options);
+
+    autocompleteFromRef.current.addListener('place_changed', () => {
+      const place = autocompleteFromRef.current?.getPlace();
+      if (place?.geometry?.location) {
+        const location = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          name: place.name || place.formatted_address || 'From location',
           displayName: place.formatted_address,
-        }));
-        // Cache results
-        cache.current.set(cacheKey, results);
-        // Limit cache size
-        if (cache.current.size > 50) {
-          const firstKey = cache.current.keys().next().value;
-          if (firstKey) cache.current.delete(firstKey);
-        }
-        setSuggestions(results);
+        };
+        onLocationSelect(location, 'from');
+        onSelectedTypeChange('to');
       }
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+    });
 
-  const handleFromChange = (value: string) => {
-    setQueryFrom(value);
-    setShowFrom(true);
-    clearTimeout(debounceFrom.current);
-    debounceFrom.current = setTimeout(() => {
-      searchPlaces(value, setSuggestionsFrom);
-    }, 300);
-  };
+    autocompleteToRef.current.addListener('place_changed', () => {
+      const place = autocompleteToRef.current?.getPlace();
+      if (place?.geometry?.location) {
+        const location = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          name: place.name || place.formatted_address || 'To location',
+          displayName: place.formatted_address,
+        };
+        onLocationSelect(location, 'to');
+        onSelectedTypeChange(null);
+      }
+    });
 
-  const handleToChange = (value: string) => {
-    setQueryTo(value);
-    setShowTo(true);
-    clearTimeout(debounceTo.current);
-    debounceTo.current = setTimeout(() => {
-      searchPlaces(value, setSuggestionsTo);
-    }, 300);
-  };
-
-  const handleSelectFrom = (location: Location) => {
-    onLocationSelect(location, 'from');
-    setQueryFrom(location.displayName || location.name);
-    setSuggestionsFrom([]);
-    setShowFrom(false);
-    onSelectedTypeChange('to');
-  };
-
-  const handleSelectTo = (location: Location) => {
-    onLocationSelect(location, 'to');
-    setQueryTo(location.displayName || location.name);
-    setSuggestionsTo([]);
-    setShowTo(false);
-    onSelectedTypeChange(null);
-  };
+    return () => {
+      if (autocompleteFromRef.current) {
+        google.maps.event.clearInstanceListeners(autocompleteFromRef.current);
+      }
+      if (autocompleteToRef.current) {
+        google.maps.event.clearInstanceListeners(autocompleteToRef.current);
+      }
+    };
+  }, [isLoaded, onLocationSelect, onSelectedTypeChange]);
 
   const handleDotClick = (type: 'from' | 'to') => {
     onSelectedTypeChange(selectedType === type ? null : type);
   };
+
+  if (loadError) {
+    return (
+      <div className="bg-white rounded-2xl shadow-2xl p-4">
+        <p className="text-red-500">Error loading Google Maps</p>
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-xl mx-auto flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-2xl p-3 w-full max-w-xl mx-auto">
@@ -162,69 +138,30 @@ export default function SearchBar({
           />
         </div>
         <div className="flex-1 space-y-2">
-          <div className="relative">
-            <input
-              ref={inputFromRef}
-              type="text"
-              placeholder="From: University, address..."
-              value={queryFrom}
-              onChange={(e) => handleFromChange(e.target.value)}
-              onFocus={() => { onSelectedTypeChange('from'); setShowFrom(true); }}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
-                selectedType === 'from' 
-                  ? 'border-uva-accent bg-blue-50' 
-                  : 'border-slate-200 bg-white'
-              }`}
-            />
-            {showFrom && suggestionsFrom.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 max-h-48 overflow-y-auto z-50">
-                {suggestionsFrom.map((loc, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectFrom(loc)}
-                    className="w-full px-4 py-3 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-slate-900 text-sm">{loc.name}</div>
-                    <div className="text-xs text-slate-500 truncate">{loc.displayName}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {isSearching && showFrom && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <div className="w-4 h-4 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-          </div>
-          <div className="relative">
-            <input
-              ref={inputToRef}
-              type="text"
-              placeholder="To: Where are you going?"
-              value={queryTo}
-              onChange={(e) => handleToChange(e.target.value)}
-              onFocus={() => { onSelectedTypeChange('to'); setShowTo(true); }}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
-                selectedType === 'to' 
-                  ? 'border-eco-red bg-red-50' 
-                  : 'border-slate-200 bg-white'
-              }`}
-            />
-            {showTo && suggestionsTo.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 max-h-48 overflow-y-auto z-50">
-                {suggestionsTo.map((loc, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectTo(loc)}
-                    className="w-full px-4 py-3 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-slate-900 text-sm">{loc.name}</div>
-                    <div className="text-xs text-slate-500 truncate">{loc.displayName}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <input
+            ref={inputFromRef}
+            type="text"
+            placeholder="From: University, address..."
+            defaultValue={fromLocation?.displayName || ''}
+            className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
+              selectedType === 'from' 
+                ? 'border-uva-accent bg-blue-50' 
+                : 'border-slate-200 bg-white'
+            }`}
+            onFocus={() => onSelectedTypeChange('from')}
+          />
+          <input
+            ref={inputToRef}
+            type="text"
+            placeholder="To: Where are you going?"
+            defaultValue={toLocation?.displayName || ''}
+            className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
+              selectedType === 'to' 
+                ? 'border-eco-red bg-red-50' 
+                : 'border-slate-200 bg-white'
+            }`}
+            onFocus={() => onSelectedTypeChange('to')}
+          />
         </div>
         <button
           onClick={onSwap}

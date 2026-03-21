@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { GoogleMapsProvider } from "@/lib/GoogleMapsContext";
 
 export const metadata: Metadata = {
   title: "EcoRoute - UVA Carbon-Smart Routing",
@@ -21,7 +22,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <GoogleMapsProvider>
+          {children}
+        </GoogleMapsProvider>
+      </body>
     </html>
   );
 }
