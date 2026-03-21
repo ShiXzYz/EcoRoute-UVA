@@ -10,11 +10,18 @@ interface Location {
   displayName?: string;
 }
 
+interface RouteData {
+  points: { lat: number; lng: number }[];
+  color?: string;
+}
+
 interface MapSelectorProps {
   onLocationSelect: (location: Location, type: 'from' | 'to') => void;
   fromLocation: Location | null;
   toLocation: Location | null;
   selectedType: 'from' | 'to' | null;
+  route?: RouteData | null;
+  mode?: string;
 }
 
 const containerStyle = {
@@ -27,11 +34,25 @@ const center = {
   lng: -78.5080,
 };
 
+const modeColors: Record<string, string> = {
+  walking: '#10B981',
+  bike: '#F59E0B',
+  ebike: '#8B5CF6',
+  solo_car: '#EF4444',
+  carpool_2: '#F97316',
+  carpool_3: '#F97316',
+  cat_bus: '#3B82F6',
+  uts_bus: '#3B82F6',
+  trolley: '#3B82F6',
+};
+
 export default function MapSelector({
   onLocationSelect,
   fromLocation,
   toLocation,
   selectedType,
+  route,
+  mode,
 }: MapSelectorProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -140,7 +161,20 @@ export default function MapSelector({
       markersRef.current.push(toMarker);
     }
 
-    if (fromLocation && toLocation) {
+    if (route?.points && route.points.length > 0) {
+      const routeColor = route.color || modeColors[mode || 'walking'] || '#00A3E0';
+      polylineRef.current = new google.maps.Polyline({
+        path: route.points,
+        strokeColor: routeColor,
+        strokeOpacity: 0.9,
+        strokeWeight: 5,
+        map,
+      });
+
+      const bounds = new google.maps.LatLngBounds();
+      route.points.forEach(point => bounds.extend(point));
+      map.fitBounds(bounds, 80);
+    } else if (fromLocation && toLocation) {
       polylineRef.current = new google.maps.Polyline({
         path: [
           { lat: fromLocation.lat, lng: fromLocation.lng },
@@ -157,7 +191,7 @@ export default function MapSelector({
       bounds.extend({ lat: toLocation.lat, lng: toLocation.lng });
       map.fitBounds(bounds, 50);
     }
-  }, [mapReady, fromLocation, toLocation]);
+  }, [mapReady, fromLocation, toLocation, route, mode]);
 
   if (loadError) {
     return (

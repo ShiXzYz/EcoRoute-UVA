@@ -25,6 +25,11 @@ interface Location {
   displayName?: string;
 }
 
+interface RouteData {
+  points: { lat: number; lng: number }[];
+  color?: string;
+}
+
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3959;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -51,6 +56,8 @@ export default function Home() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(true);
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
+  const [route, setRoute] = useState<RouteData | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
@@ -115,7 +122,9 @@ export default function Home() {
       setDistance(distance_miles);
 
       if (data.scores.length > 0) {
-        setSelectedMode(data.scores[0].mode);
+        const defaultMode = data.scores[0].mode;
+        setSelectedMode(defaultMode);
+        fetchDirections(defaultMode);
       }
 
       setPanelOpen(true);
@@ -129,6 +138,38 @@ export default function Home() {
   const handleLogTrip = async (mode: string, gCO2e: number) => {
     setStreak(streak + 1);
     console.log('Logged trip:', { mode, gCO2e, streak: streak + 1 });
+  };
+
+  const fetchDirections = async (selectedMode: string) => {
+    if (!fromLocation || !toLocation) return;
+
+    setRouteLoading(true);
+    try {
+      const origin = `${fromLocation.lat},${fromLocation.lng}`;
+      const destination = `${toLocation.lat},${toLocation.lng}`;
+
+      const response = await fetch(
+        `/api/directions?origin=${origin}&destination=${destination}&mode=${selectedMode}`
+      );
+      const data = await response.json();
+
+      if (data.routes && data.routes.length > 0) {
+        setRoute({
+          points: data.routes[0].points,
+          color: undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching directions:', error);
+      setRoute(null);
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  const handleModeSelect = (mode: string) => {
+    setSelectedMode(mode);
+    fetchDirections(mode);
   };
 
   return (
@@ -148,6 +189,8 @@ export default function Home() {
           fromLocation={fromLocation}
           toLocation={toLocation}
           selectedType={selectedType}
+          route={route}
+          mode={selectedMode || undefined}
         />
       </div>
 
@@ -205,7 +248,7 @@ export default function Home() {
         onClose={() => setPanelOpen(false)}
         onCollapse={() => setPanelExpanded(false)}
         onExpand={() => setPanelExpanded(true)}
-        onSelect={setSelectedMode}
+        onSelect={handleModeSelect}
         onLogTrip={handleLogTrip}
       />
     </main>
