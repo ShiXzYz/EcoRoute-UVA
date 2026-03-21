@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { GoogleMapsProvider } from "@/lib/GoogleMapsContext";
 
 export const metadata: Metadata = {
   title: "EcoRoute - UVA Carbon-Smart Routing",
@@ -8,6 +9,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 
@@ -18,7 +22,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <GoogleMapsProvider>
+          {children}
+        </GoogleMapsProvider>
+      </body>
     </html>
   );
 }

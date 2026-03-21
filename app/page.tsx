@@ -22,6 +22,12 @@ interface Location {
   lat: number;
   lng: number;
   name: string;
+  displayName?: string;
+}
+
+interface RouteData {
+  points: { lat: number; lng: number }[];
+  color?: string;
 }
 
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -49,18 +55,16 @@ export default function Home() {
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(true);
-  const [fromInput, setFromInput] = useState('');
-  const [toInput, setToInput] = useState('');
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
+  const [route, setRoute] = useState<RouteData | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
-      setFromInput(location.name);
       setSelectedType('to');
     } else {
       setToLocation(location);
-      setToInput(location.name);
       setSelectedType(null);
     }
 
@@ -77,19 +81,10 @@ export default function Home() {
     setSelectedType(type);
   };
 
-  const handleSearch = async () => {
-    if (fromLocation && toLocation) {
-      await fetchScores(fromLocation, toLocation);
-    }
-  };
-
   const handleSwap = () => {
     const tempLocation = fromLocation;
-    const tempInput = fromInput;
     setFromLocation(toLocation);
     setToLocation(tempLocation);
-    setFromInput(toInput);
-    setToInput(tempInput);
     if (fromLocation && toLocation) {
       setSelectedType(null);
     } else if (fromLocation) {
@@ -127,7 +122,9 @@ export default function Home() {
       setDistance(distance_miles);
 
       if (data.scores.length > 0) {
-        setSelectedMode(data.scores[0].mode);
+        const defaultMode = data.scores[0].mode;
+        setSelectedMode(defaultMode);
+        fetchDirections(defaultMode);
       }
 
       setPanelOpen(true);
@@ -141,6 +138,71 @@ export default function Home() {
   const handleLogTrip = async (mode: string, gCO2e: number) => {
     setStreak(streak + 1);
     console.log('Logged trip:', { mode, gCO2e, streak: streak + 1 });
+  };
+
+  const fetchDirections = (selectedMode: string) => {
+    if (!fromLocation || !toLocation) return;
+
+    setRouteLoading(true);
+
+    // Wait for google to be available
+    const tryFetch = () => {
+      if (typeof window.google === 'undefined' || !window.google.maps) {
+        setTimeout(tryFetch, 100);
+        return;
+      }
+
+      try {
+        const modeToTravelMode: Record<string, string> = {
+          walking: 'WALKING',
+          bike: 'BICYCLING',
+          ebike: 'BICYCLING',
+          ev: 'DRIVING',
+          solo_car: 'DRIVING',
+          carpool_2: 'DRIVING',
+          carpool_3: 'DRIVING',
+          cat_bus: 'TRANSIT',
+          uts_bus: 'TRANSIT',
+          trolley: 'TRANSIT',
+        };
+
+        const mode = modeToTravelMode[selectedMode] || 'DRIVING';
+        const directionsService = new window.google.maps.DirectionsService();
+
+        directionsService.route(
+          {
+            origin: new window.google.maps.LatLng(fromLocation.lat, fromLocation.lng),
+            destination: new window.google.maps.LatLng(toLocation.lat, toLocation.lng),
+            travelMode: (window.google.maps.TravelMode as any)[mode],
+          },
+          (result, status) => {
+            if (status === 'OK' && result) {
+              // eslint-disable-next-line
+              const polyline = result.routes[0].overview_polyline as any;
+              const path = polyline.getPath ? polyline.getPath() : polyline;
+              const points = window.google.maps.geometry.encoding.decodePath(path);
+              setRoute({
+                points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+                color: undefined,
+              });
+            } else {
+              console.error('Directions failed:', status);
+            }
+            setRouteLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error('Error fetching directions:', error);
+        setRouteLoading(false);
+      }
+    };
+
+    tryFetch();
+  };
+
+  const handleModeSelect = (mode: string) => {
+    setSelectedMode(mode);
+    fetchDirections(mode);
   };
 
   return (
@@ -160,6 +222,8 @@ export default function Home() {
           fromLocation={fromLocation}
           toLocation={toLocation}
           selectedType={selectedType}
+          route={route}
+          mode={selectedMode || undefined}
         />
       </div>
 
@@ -170,10 +234,8 @@ export default function Home() {
           toLocation={toLocation}
           selectedType={selectedType}
           onSelectedTypeChange={handleSelectedTypeChange}
-          onFromChange={(e) => setFromInput(e.target.value)}
-          onToChange={(e) => setToInput(e.target.value)}
+          onLocationSelect={handleLocationSelect}
           onSwap={handleSwap}
-          onSearch={handleSearch}
         />
       </div>
 
@@ -192,7 +254,7 @@ export default function Home() {
         <div className="absolute bottom-8 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
           <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3">
             <p className="text-sm text-slate-700">
-              <span className="font-medium">Tip:</span> Tap the blue dot to set start, red dot for destination.
+              <span className="font-medium">Tip:</span> Search for a location or tap on the map.
             </p>
           </div>
         </div>
@@ -219,7 +281,7 @@ export default function Home() {
         onClose={() => setPanelOpen(false)}
         onCollapse={() => setPanelExpanded(false)}
         onExpand={() => setPanelExpanded(true)}
-        onSelect={setSelectedMode}
+        onSelect={handleModeSelect}
         onLogTrip={handleLogTrip}
       />
     </main>

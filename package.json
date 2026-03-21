@@ -11,6 +11,8 @@
     "parse-gtfs": "node scripts/parse-gtfs.js"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.0.2",
+    "@react-google-maps/api": "^2.20.8",
     "@supabase/supabase-js": "^2.38.0",
     "axios": "^1.6.0",
     "classnames": "^2.3.2",
