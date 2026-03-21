@@ -3,6 +3,8 @@
 import { createContext, useContext } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 
+const GOOGLE_MAPS_LIBRARIES: ('places' | 'marker')[] = ['places', 'marker'];
+
 interface GoogleMapsContextType {
   isLoaded: boolean;
   loadError: Error | undefined;
@@ -13,7 +15,7 @@ const GoogleMapsContext = createContext<GoogleMapsContextType | null>(null);
 export function GoogleMapsProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-    libraries: ['places', 'marker'],
+    libraries: GOOGLE_MAPS_LIBRARIES,
   });
 
   return (

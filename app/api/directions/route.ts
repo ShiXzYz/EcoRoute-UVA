@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     walking: 'walking',
     bike: 'bicycling',
     ebike: 'bicycling',
+    ev: 'driving',
     solo_car: 'driving',
     carpool_2: 'driving',
     carpool_3: 'driving',
@@ -50,8 +51,9 @@ export async function GET(req: NextRequest) {
     const data = await response.json();
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      console.error('Directions API error:', data);
       return NextResponse.json(
-        { error: `Directions API error: ${data.status}` },
+        { error: `Directions API error: ${data.status}`, details: data },
         { status: 500 }
       );
     }
