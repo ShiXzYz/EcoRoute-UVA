@@ -29,6 +29,8 @@ interface MapSelectorProps {
   route?: RouteData | null;
   mode?: string;
   transitStops?: TransitStopMarker;
+  mapType?: 'roadmap' | 'satellite';
+  onMapTypeChange?: (type: 'roadmap' | 'satellite') => void;
 }
 
 const containerStyle = {
@@ -61,6 +63,8 @@ export default function MapSelector({
   route,
   mode,
   transitStops,
+  mapType = 'roadmap',
+  onMapTypeChange,
 }: MapSelectorProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -84,8 +88,13 @@ export default function MapSelector({
       zoom: 14,
       disableDefaultUI: false,
       zoomControl: true,
+      mapTypeControl: false,
+      fullscreenControl: false,
       mapId: '27ee17fe3338eb9aeeeff1a2',
     });
+
+    mapInstanceRef.current = map;
+    setMapReady(true);
 
     mapInstanceRef.current = map;
     setMapReady(true);
@@ -274,6 +283,12 @@ export default function MapSelector({
       map.fitBounds(bounds, 80);
     }
   }, [mapReady, transitStops, mode, fromLocation, toLocation]);
+  // Handle map type changes
+  useEffect(() => {
+    if (mapInstanceRef.current && mapType) {
+      mapInstanceRef.current.setMapTypeId(mapType);
+    }
+  }, [mapType]);
 
   if (loadError) {
     return (
