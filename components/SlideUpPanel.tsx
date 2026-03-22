@@ -1,22 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import ModeCard from './ModeCard';
-
-interface ModeScore {
-  mode: string;
-  label: string;
-  gCO2e: number;
-  timeMin: number;
-  costUSD: number;
-  recommended: boolean;
-  icon: string;
-  color: string;
-  warning?: string;
-}
+import type { ModeResult } from '@/types';
 
 interface SlideUpPanelProps {
-  modes: ModeScore[];
+  modes: ModeResult[];
   selectedMode: string | null;
   baseline: number;
   distance: number;
@@ -27,6 +15,72 @@ interface SlideUpPanelProps {
   onExpand: () => void;
   onSelect: (mode: string) => void;
   onLogTrip: (mode: string, gCO2e: number) => void;
+}
+
+function ModeCard({
+  mode,
+  isSelected,
+  baseline,
+  onSelect,
+  onLogTrip,
+}: {
+  mode: ModeResult;
+  isSelected: boolean;
+  baseline: number;
+  onSelect: () => void;
+  onLogTrip: () => void;
+}) {
+  const savings = baseline - mode.gCO2e;
+  const savingsPercent = baseline > 0 ? Math.round((savings / baseline) * 100) : 0;
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+        isSelected
+          ? 'border-uva-accent bg-blue-50'
+          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <p className="font-semibold text-sm text-slate-900">{mode.label}</p>
+          <p className="text-xs text-slate-600">
+            <span className="mr-3">⏱️ {mode.timeMin}min</span>
+            {mode.costUSD > 0 && <span>💰 ${mode.costUSD.toFixed(2)}</span>}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className={`text-lg font-bold ${mode.color}`}>{mode.gCO2e}g CO2</p>
+          {savings > 0 && (
+            <p className="text-xs text-green-600 font-medium">
+              -{savingsPercent}% vs car
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          className="flex-1 px-2 py-1 bg-uva-accent text-white text-xs rounded hover:bg-uva-accent/90 transition-colors"
+        >
+          Select
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onLogTrip();
+          }}
+          className="flex-1 px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
+        >
+          Log Trip
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function SlideUpPanel({
@@ -53,7 +107,7 @@ export default function SlideUpPanel({
     }
   }, [isOpen, isExpanded]);
 
-  const handleModeSelect = (mode: ModeScore) => {
+  const handleModeSelect = (mode: ModeResult) => {
     onSelect(mode.mode);
   };
 
@@ -161,7 +215,7 @@ export default function SlideUpPanel({
             {selectedMode && savings > 0 && (
               <div className="bg-green-50 px-2 py-1 rounded-full">
                 <span className="text-green-600 font-medium text-xs">
-                  -{savingsPercent}% CO₂
+                  -{savingsPercent}% CO2
                 </span>
               </div>
             )}
@@ -174,7 +228,7 @@ export default function SlideUpPanel({
             <div className="space-y-2">
               {modes.map((mode) => (
                 <ModeCard
-                  key={mode.mode}
+                  key={`${mode.mode}-${mode.gCO2e}`}
                   mode={mode}
                   isSelected={selectedMode === mode.mode}
                   baseline={baseline}

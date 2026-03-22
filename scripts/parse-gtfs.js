@@ -237,6 +237,29 @@ function normalizeTime(timeStr) {
 }
 
 /**
+ * Clean up temporary directory
+ */
+function cleanupTemp(tempDir) {
+  try {
+    if (existsSync(tempDir)) {
+      const files = fs.readdirSync(tempDir);
+      files.forEach(file => {
+        const filePath = path.join(tempDir, file);
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+          cleanupTemp(filePath);
+        } else {
+          fs.unlinkSync(filePath);
+        }
+      });
+      fs.rmdirSync(tempDir);
+    }
+  } catch (err) {
+    // Silently ignore cleanup errors
+  }
+}
+
+/**
  * Main entry point
  */
 async function main() {
@@ -269,6 +292,8 @@ async function main() {
 
     // Parse each feed
     const results = [];
+    const tempDirs = [];
+    
     for (const feed of feeds) {
       try {
         if (!existsSync(feed.zip)) {
@@ -276,6 +301,9 @@ async function main() {
           continue;
         }
 
+        const tempDir = path.join(__dirname, `.temp-${feed.output.replace('.json', '')}`);
+        tempDirs.push(tempDir);
+        
         const data = await parseGTFS(feed.zip, feed.name, feed.output);
         
         // Save to JSON
@@ -288,6 +316,9 @@ async function main() {
         console.error(`   ❌ Failed to process ${feed.name}:`, err.message);
       }
     }
+
+    // Clean up temp directories
+    tempDirs.forEach(tempDir => cleanupTemp(tempDir));
 
     // Print summary
     console.log('\n✅ GTFS parsing complete!');
