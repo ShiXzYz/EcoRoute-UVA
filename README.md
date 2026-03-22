@@ -2,13 +2,15 @@
 
 Map-based routing app, designed specifically for the UVA community, that calculates carbon emissions for transportation modes and encourages low-carbon choices through behavioral design.
 
+Access EcoRoute @ UVA here: https://eco-route-uva.vercel.app/
+
 ## Quick Start
 
 ### Prerequisites
 - Node.js 18+, npm 9+
 - Google Maps API key (Directions + Places)
 
-### Installation
+### Dev Testing
 
 ```bash
 git clone <repo>
