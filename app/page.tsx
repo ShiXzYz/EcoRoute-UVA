@@ -442,9 +442,9 @@ export default function GPSPage() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
-      {/* Full Screen Map - with top and bottom padding */}
+      {/* Full Screen Map - Locked between top and bottom bars */}
       <div 
-        className="absolute left-0 right-0 bottom-0" 
+        className="absolute inset-x-0" 
         style={{ zIndex: 1, top: '56px', bottom: '56px' }}
         onClick={() => {
           if (panelOpen && panelExpanded) {
@@ -469,11 +469,11 @@ export default function GPSPage() {
         />
       </div>
 
-      {/* Top Bar - Logo Centered */}
+      {/* Top Bar - Logo Left */}
       <div 
-        className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-center px-4 z-[100]"
+        className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-between px-4 z-[100]"
       >
-        {/* Logo & App Name - Centered */}
+        {/* Logo & App Name - Left */}
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-uva-primary rounded-lg flex items-center justify-center">
             <span className="text-lg">🌿</span>
@@ -484,25 +484,28 @@ export default function GPSPage() {
           </div>
         </div>
 
-        {/* Streak Badge - Left of account button */}
-        {tripCount > 0 && (
-          <div className="absolute right-16 flex items-center gap-1.5 bg-uva-primary/10 rounded-full px-2.5 py-1.5">
-            <span className="text-sm">🔥</span>
-            <span className="font-bold text-uva-primary text-sm">{calculateCurrentStreak(loadTrips())}</span>
-          </div>
-        )}
-
-        {/* Account Button - Absolute Right */}
-        <button
-          onClick={() => setShowAuthModal(true)}
-          className="absolute right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
-        >
-          {user ? (
-            <span className="text-lg">👤</span>
-          ) : (
-            <span className="text-lg">🔐</span>
+        {/* Right side container */}
+        <div className="flex items-center gap-3">
+          {/* Streak Badge */}
+          {tripCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-uva-primary/10 rounded-full px-2.5 py-1.5">
+              <span className="text-sm">🔥</span>
+              <span className="font-bold text-uva-primary text-sm">{calculateCurrentStreak(loadTrips())}</span>
+            </div>
           )}
-        </button>
+
+          {/* Account Button */}
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+          >
+            {user ? (
+              <span className="text-lg">👤</span>
+            ) : (
+              <span className="text-lg">🔐</span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Map Controls - Below Top Bar, Left Side */}

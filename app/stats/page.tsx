@@ -192,7 +192,7 @@ export default function StatsPage() {
         <p className="text-uva-accent text-sm">Track your environmental contribution</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-6 pb-14 space-y-4">
         {/* Weekly Summary Card */}
         <div className="bg-white rounded-2xl shadow-md p-4">
           <h2 className="text-lg font-semibold text-slate-800 mb-3">This Week</h2>
