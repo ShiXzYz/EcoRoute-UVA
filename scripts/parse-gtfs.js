@@ -120,13 +120,21 @@ async function parseGTFS(zipPath, feedName, outputName) {
     console.log('   📋 Parsing trips.txt...');
     const tripsResult = await parseCSV(path.join(tempDir, 'trips.txt'));
     const tripsByRoute = {};
+    const tripById = {};
     tripsResult.data.forEach(t => {
       if (!tripsByRoute[t.route_id]) tripsByRoute[t.route_id] = [];
       tripsByRoute[t.route_id].push({
         id: t.trip_id,
         serviceId: t.service_id,
         routeId: t.route_id,
+        shapeId: t.shape_id || null,
       });
+      tripById[t.trip_id] = {
+        id: t.trip_id,
+        serviceId: t.service_id,
+        routeId: t.route_id,
+        shapeId: t.shape_id || null,
+      };
     });
 
     console.log('   📋 Parsing calendar.txt...');
@@ -203,6 +211,35 @@ async function parseGTFS(zipPath, feedName, outputName) {
       }
     });
 
+    // Parse shapes.txt for route polylines
+    console.log('   📋 Parsing shapes.txt...');
+    const shapes = {};
+    try {
+      const shapesResult = await parseCSV(path.join(tempDir, 'shapes.txt'));
+      shapesResult.data.forEach(row => {
+        if (!shapes[row.shape_id]) shapes[row.shape_id] = [];
+        shapes[row.shape_id].push({
+          lat: parseFloat(row.shape_pt_lat),
+          lng: parseFloat(row.shape_pt_lon),
+          seq: parseInt(row.shape_pt_sequence) || 0,
+        });
+      });
+      // Sort each shape by sequence
+      for (const id in shapes) {
+        shapes[id].sort((a, b) => a.seq - b.seq);
+      }
+    } catch (err) {
+      console.log('   ⚠️  shapes.txt not found or empty, skipping polylines');
+    }
+
+    // Build shape lookup by route (pick first trip's shape)
+    const routeShapeIds = {};
+    tripsResult.data.forEach(t => {
+      if (t.shape_id && !routeShapeIds[t.route_id]) {
+        routeShapeIds[t.route_id] = t.shape_id;
+      }
+    });
+
     // Build final output
     const gtfsData = {
       agency: feedName,
@@ -211,6 +248,8 @@ async function parseGTFS(zipPath, feedName, outputName) {
       routes,
       departures,
       stop_routes: stopRoutes,
+      shapes,  // Full shape polylines
+      route_shape_ids: routeShapeIds,  // Route ID -> Shape ID lookup
     };
 
     // Clean up temp directory

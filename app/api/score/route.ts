@@ -10,7 +10,7 @@
  * on lowest-emissions option to nudge behavioral default.
  */
 
-import { getNearestStops, getNextDeparture, findConnectingStops } from '@/lib/gtfs';
+import { getNearestStops, getNextDeparture, findConnectingStops, getShapePoints, getRouteName } from '@/lib/gtfs';
 
 /**
  * EPA Emission Factors (g CO₂e per mile) — Hardcoded 2023 baseline
@@ -78,9 +78,10 @@ interface ModeResult {
   icon: string;
   polyline?: string;
   transitStops?: {
-    origin: { id: string; lat: number; lon: number };
-    destination: { id: string; lat: number; lon: number };
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
   };
+  shapePoints?: { lat: number; lng: number }[];
   nextDepartureTime?: string;
   minutesUntilDeparture?: number;
 }
@@ -183,6 +184,99 @@ function getModeIcon(mode: string): string {
 }
 
 /**
+ * Clip shape polyline to only show segment between origin and destination stops
+ * Uses linear interpolation to find actual stop positions on the shape
+ */
+function clipShapeToStops(
+  points: {lat: number, lng: number}[],
+  originStop: {lat: number, lon: number},
+  destStop: {lat: number, lon: number}
+): {lat: number, lng: number}[] {
+  if (points.length < 2) return [];
+
+  // Find indices of closest shape points to each stop
+  const findNearestIndex = (stop: {lat: number, lon: number}) => {
+    let minDist = Infinity;
+    let minIdx = 0;
+    points.forEach((p, i) => {
+      const dist = haversineDistance(stop.lat, stop.lon, p.lat, p.lng);
+      if (dist < minDist) {
+        minDist = dist;
+        minIdx = i;
+      }
+    });
+    return { index: minIdx, distance: minDist };
+  };
+
+  const originNearest = findNearestIndex(originStop);
+  const destNearest = findNearestIndex(destStop);
+
+  // If stops are too far from shape (>600m), skip polyline
+  if (originNearest.distance > 600 || destNearest.distance > 600) {
+    return [];
+  }
+
+  let startIdx = originNearest.index;
+  let endIdx = destNearest.index;
+
+  // Determine direction: check which direction makes sense for travel
+  // If origin index > dest index, the shape might be going backwards
+  // We need to check both directions and use the one with fewer points (shorter segment)
+  
+  // Option 1: Forward direction (origin -> dest as indices increase)
+  const forwardSegment = points.slice(
+    Math.min(startIdx, endIdx),
+    Math.max(startIdx, endIdx) + 1
+  );
+  
+  // Option 2: Check if going backwards makes more sense
+  // Look at distances along the shape in both directions
+  const originToDestForward = endIdx - startIdx;
+  
+  // If origin comes after dest in shape order, try reversing
+  if (originToDestForward < 0) {
+    // Swap - use the reversed segment
+    startIdx = destNearest.index;
+    endIdx = originNearest.index;
+  }
+
+  // Final segment
+  const segment = points.slice(
+    Math.min(startIdx, endIdx),
+    Math.max(startIdx, endIdx) + 1
+  );
+
+  // If segment is too short (<3 points) or too long (>50% of full shape), return empty
+  // to avoid showing nonsensical routes
+  if (segment.length < 3 || segment.length > points.length * 0.7) {
+    // For very short or very long segments, just use a direct line
+    return [{
+      lat: originStop.lat,
+      lng: originStop.lon
+    }, {
+      lat: destStop.lat,
+      lng: destStop.lon
+    }];
+  }
+
+  return segment;
+}
+
+/**
+ * Haversine distance in meters
+ */
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * Main /api/score endpoint
  * 
  * Query parameters:
@@ -229,8 +323,8 @@ export async function POST(req: Request) {
     }
 
     // 2. Transit modes: Query GTFS for nearby stops and departures
-    const originStops = getNearestStops(originLat, originLon, 400); // 400m radius
-    const destStops = getNearestStops(destinationLat, destinationLon, 400);
+    const originStops = getNearestStops(originLat, originLon, 1600); // 1600 m or ~ 1 mile radius
+    const destStops = getNearestStops(destinationLat, destinationLon, 1600);
 
     if (originStops.length > 0 && destStops.length > 0) {
       // Build set of feeds that have service at both origin and destination
@@ -238,7 +332,7 @@ export async function POST(req: Request) {
       const feedsWithDest = new Set(destStops.map(s => s.feed));
       const commonFeeds = Array.from(feedsWithOrigin).filter(f => feedsWithDest.has(f));
 
-      // For each feed with service at both locations, create transit modes
+      // For each feed with service at both locations, create ONE optimal transit mode
       for (const feed of commonFeeds) {
         const originStopsInFeed = originStops.filter(s => s.feed === feed);
         const destStopsInFeed = destStops.filter(s => s.feed === feed);
@@ -249,37 +343,78 @@ export async function POST(req: Request) {
           feed
         );
 
-        // For each connection, create a transit mode result
+        if (connections.length === 0) continue;
+
+        // Find the best connection: prefer earliest departure, then shortest walk
+        let bestConnection = connections[0];
+        let bestScore = Infinity;
+
         for (const conn of connections) {
-          const { nextTime, minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
-
-          // Determine mode key based on feed name
-          let modeKey = 'uts_bus';
-          if (feed === 'cat-gtfs') modeKey = 'cat_bus';
-          if (feed === 'jaunt-gtfs') modeKey = 'connect_bus';
-
-          const score = scoreMode(modeKey, distance_miles);
-          if (score) {
-            modes.push({
-              ...score,
-              label: getModeLabel(modeKey, nextTime ? { minutesUntil: minutesUntilDeparture || 0, time: nextTime } : undefined),
-              recommended: false,
-              transitStops: {
-                origin: {
-                  id: conn.originStop.id,
-                  lat: conn.originStop.lat,
-                  lon: conn.originStop.lon,
-                },
-                destination: {
-                  id: conn.destStop.id,
-                  lat: conn.destStop.lat,
-                  lon: conn.destStop.lon,
-                },
-              },
-              nextDepartureTime: nextTime || undefined,
-              minutesUntilDeparture: minutesUntilDeparture || undefined,
-            });
+          const { minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
+          const originDist = originStopsInFeed.find(s => s.stop.id === conn.originStop.id)?.distanceMeters || 9999;
+          
+          // Score: lower is better (prioritize departure time, then walk distance)
+          const score = (minutesUntilDeparture || 999) * 100 + originDist;
+          if (score < bestScore) {
+            bestScore = score;
+            bestConnection = conn;
           }
+        }
+
+        const conn = bestConnection;
+        const { nextTime, minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
+
+        // Determine mode key based on feed name
+        let modeKey = 'uts_bus';
+        let agencyName = 'UVA Transit';
+        if (feed === 'cat-gtfs') {
+          modeKey = 'cat_bus';
+          agencyName = 'CAT Transit';
+        }
+        if (feed === 'jaunt-gtfs') {
+          modeKey = 'connect_bus';
+          agencyName = 'CONNECT';
+        }
+
+        // Get friendly route names using routes.json mapping
+        const routeNames = conn.routes
+          .map(r => {
+            const friendly = getRouteName(feed, r.id);
+            return friendly?.name || r.long_name || r.short_name;
+          })
+          .filter((name, idx, arr) => arr.indexOf(name) === idx) // Remove duplicates
+          .join(', ');
+        const hasSchedule = nextTime !== null;
+
+        const score = scoreMode(modeKey, distance_miles);
+        if (score) {
+          // Get shape points for polyline (clip to origin/dest stops)
+          const allShapePoints = conn.shapeId ? getShapePoints(feed, conn.shapeId) : [];
+          const clippedPoints = clipShapeToStops(allShapePoints, conn.originStop, conn.destStop);
+
+          modes.push({
+            ...score,
+            mode: modeKey,
+            label: `${agencyName}${routeNames ? ` (${routeNames})` : ''} — ${hasSchedule ? `Departs ${minutesUntilDeparture} min (${nextTime})` : 'Check schedule'}`,
+            recommended: false,
+            transitStops: {
+              origin: {
+                id: conn.originStop.id,
+                lat: conn.originStop.lat,
+                lon: conn.originStop.lon,
+                name: conn.originStop.name,
+              },
+              destination: {
+                id: conn.destStop.id,
+                lat: conn.destStop.lat,
+                lon: conn.destStop.lon,
+                name: conn.destStop.name,
+              },
+            },
+            shapePoints: clippedPoints.length > 0 ? clippedPoints : undefined,
+            nextDepartureTime: nextTime || undefined,
+            minutesUntilDeparture: minutesUntilDeparture || undefined,
+          });
         }
       }
     }

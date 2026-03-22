@@ -28,7 +28,7 @@ The app will open at **[http://localhost:3000](http://localhost:3000)** with hot
 ### Stats Page
 - Tap **Stats** tab at bottom
 - See impact metrics: tree equivalents, gas savings, mode breakdown, 2030 progress
-- Tap **GPS** to return to map
+- Tap **GPS** tab to return to map
 
 ---
 
@@ -277,10 +277,9 @@ npm run dev
 
 ## 🚀 Next Steps
 
-- See [GTFS_IMPLEMENTATION_PLAN.md](GTFS_IMPLEMENTATION_PLAN.md) for bus stop marker feature details
-- See [GTFS_HACKATHON_CHECKLIST.md](GTFS_HACKATHON_CHECKLIST.md) for phased rollout
+- See [GTFS_README.md](GTFS_README.md) for GTFS transit feature details
 - See [API_DOCS.md](API_DOCS.md) for endpoint specs
-- See [ecoroute-context.md](ecoroute-context.md) for full UX spec
+- See [CONTEXT.md](CONTEXT.md) for full project context
 
 ---
 

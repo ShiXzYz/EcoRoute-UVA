@@ -302,26 +302,24 @@ See [data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md) for details.
 ## 📖 Documentation
 
 - **[API_DOCS.md](API_DOCS.md)** — Complete API reference
-- **[ecoroute-context.md](ecoroute-context.md)** — Full UX/architecture spec
-- **[GTFS_IMPLEMENTATION_PLAN.md](GTFS_IMPLEMENTATION_PLAN.md)** — Bus stop marker feature plan
-- **[GTFS_HACKATHON_CHECKLIST.md](GTFS_HACKATHON_CHECKLIST.md)** — 3-hour implementation guide
-- **[data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md)** — GTFS file organization
+- **[GTFS_README.md](GTFS_README.md)** — GTFS transit integration details
+- **[CONTEXT.md](CONTEXT.md)** — Full project context and architecture
+- **[QUICKSTART.md](QUICKSTART.md)** — Quick start guide
+- **[data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md)** — GTFS setup guide
 
 ---
 
 ## 🏆 Project Status
 
-**Status:** UVA Sustainable IT Hackathon (March 2026)  
-**Current phase:** Backend/frontend integration. Google Maps and GTFS routing in progress.  
-**Team:** 2 developers, 24-hour sprint.
+**Status:** Active development (March 2026)
 
 **What's working:**
-- ✅ Frontend scaffolding (Next.js 14, Tailwind, TypeScript)
-- ✅ GTFS file organization
-
-**What's in progress:**
-- 🔨 `/api/score` endpoint (Google Directions + GTFS logic)
-- 🔨 GPS page map component with markers
+- ✅ Frontend (Next.js 14, Tailwind, TypeScript)
+- ✅ GTFS transit routing (UVA, CAT, CONNECT)
+- ✅ Route polylines from GTFS shapes.txt
+- ✅ Friendly route names (Gold Line, Green Line, etc.)
+- ✅ Bus stop markers on map
+- ✅ Trip logging with streak tracking
 - 🔨 Stats page impact math
 
 **What's next:**
@@ -345,8 +343,6 @@ See [data/GTFS_SETUP_GUIDE.md](data/GTFS_SETUP_GUIDE.md) for details.
 - 🚌 UTS Bus: 18 min, **88g CO₂**
 - 🚗 Drive solo: 8 min, **800g CO₂** (in red)
 
-**Claude nudge appears:**
-> "Taking the bus saves 712g CO₂ vs driving solo — like skipping 71 phone charges. Choose well."
 
 **User taps "I took this route"** → Streak increments → Logged to Supabase.
 
@@ -407,25 +403,6 @@ Calculate carbon emissions for all modes.
 }
 ```
 
-### POST /api/explain
-Stream Claude explanation of CO₂ equivalence.
-
-**Request:**
-```json
-{
-  "mode": "UTS Bus",
-  "gCO2e": 88,
-  "baseline_gco2e": 800
-}
-```
-
-**Response** (streaming):
-```
-Taking the bus saves 712g CO₂ vs driving solo — like skipping 71 phone charges.
-```
-
----
-
 ## 🗺️ Persona Routing
 
 Smart defaults based on UVA role:
@@ -468,21 +445,6 @@ if (index === 0) {
   {getEmissionLabel(gCO2e, baseline)}
 </p>
 // Color: green (≤20% of solo car), amber (50%), red (>75%)
-```
-
-### Claude Nudges
-```tsx
-// In ModeCards.tsx — POST to /api/explain
-const response = await fetch('/api/explain', {
-  method: 'POST',
-  body: JSON.stringify({
-    mode: mode.label,
-    gCO2e: mode.gCO2e,
-    baseline_gco2e: baseline,
-  }),
-});
-
-// Stream response word-by-word, update state on each chunk
 ```
 
 ### Streak Tracking
@@ -615,25 +577,12 @@ curl -X POST http://localhost:3000/api/score \
   }' | jq .
 ```
 
-### Test Claude streaming
-```bash
-curl -X POST http://localhost:3000/api/explain \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ANTHROPIC_API_KEY" \
-  -d '{
-    "mode": "Bus",
-    "gCO2e": 88,
-    "baseline_gco2e": 800
-  }'
-```
-
 ---
 
 ## ⚠️ Known Limitations & Fallbacks
 
 | Dependency | Fallback |
 |-----------|----------|
-| Claude API unavailable | Show static equivalence ("~800 phone charges") |
 | Google Maps API quota hit | Use hardcoded distance estimates |
 | Supabase down | Use localStorage for streak (no cross-device persistence) |
 | GTFS parsing incomplete | Show all modes, skip "next departure" ETA |
@@ -660,12 +609,12 @@ curl -X POST http://localhost:3000/api/explain \
 >
 > **Solution:**  **EcoRoute** is a real-time behavioral nudge system. When a UVA student, health worker, or faculty member enters their trip, the app:
 > 1. Pre-selects the lowest-carbon option (default nudge)
-> 2. Shows every mode's exact CO₂ in visceral real-world terms (streaming Claude explanations)
+> 2. Shows every mode's exact CO₂ emission
 > 3. Tracks multi-day green-trip streaks to build identity-based habits
 >
 > **Why it works:** It's grounded in academic behavioral science — not guesswork. (Reference: Thaler *Nudge*, Fogg *Behavior Model*, Duhigg *Habit Loop*.)
 >
-> **Why it ships:** Built on Next.js + public GTFS + Claude API. No proprietary dependencies. UVA Sustainable IT could take the GitHub repo and deploy internally within a week.
+> **Why it ships:** Built on Next.js + public GTFS. No proprietary dependencies. UVA Sustainable IT could take the GitHub repo and deploy internally within a week.
 >
 > **Demo:** [Hand phone to judge] "Enter your address." [Watch bus get pre-selected before they've made a choice. That's the nudge.] "That's not how current transit apps work."
 
@@ -677,7 +626,6 @@ curl -X POST http://localhost:3000/api/explain \
 - Inspired by HooTrans 2021 and UVA's 2030 Climate Action Plan
 - Behavioral design grounded in academic research (Thaler, Fogg, Duhigg)
 - GTFS data from Transitland + Charlottesville city
-- Claude API for real-time CO₂ explanations
 
 ---
 

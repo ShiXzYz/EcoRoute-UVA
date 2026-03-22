@@ -14,6 +14,11 @@ export interface TransitStopMarker {
   name?: string;
 }
 
+export interface TransitStopPair {
+  origin: TransitStopMarker;
+  destination: TransitStopMarker;
+}
+
 /**
  * Single transportation mode result from /api/score
  * Includes emissions, timing, cost, and map visualization data

@@ -5,6 +5,7 @@ import { ModeResult } from '@/types';
 interface ModeCardProps {
   mode: ModeResult;
   isSelected: boolean;
+  baseline: number;
   onSelect: () => void;
   onLogTrip: () => void;
 }
@@ -31,6 +32,7 @@ function getEmissionColor(gCO2e: number): string {
 export default function ModeCard({
   mode,
   isSelected,
+  baseline,
   onSelect,
   onLogTrip,
 }: ModeCardProps) {
@@ -43,22 +45,29 @@ export default function ModeCard({
           : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
       } ${mode.recommended ? 'ring-2 ring-green-300' : ''}`}
     >
-      {/* Header: Mode name + recommended badge */}
+      {/* Header: Mode name + badges */}
       <div className="flex items-start justify-between mb-3">
-        <div>
+        <div className="flex-1">
           <p className="font-semibold text-slate-900">{mode.label}</p>
           {/* Show transit departure timing if available */}
           {mode.minutesUntilDeparture !== undefined && mode.nextDepartureTime && (
-            <p className="text-xs text-amber-700 font-semibold mt-1">
-              ⏱️ Next departure: {mode.nextDepartureTime} ({mode.minutesUntilDeparture} min)
+            <p className="text-xs text-green-600 font-semibold mt-1">
+              ⏱️ Departs {mode.minutesUntilDeparture} min ({mode.nextDepartureTime})
             </p>
           )}
         </div>
-        {mode.recommended && (
-          <span className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ml-2">
-            ✓ Recommended
-          </span>
-        )}
+        <div className="flex flex-col gap-1 ml-2">
+          {mode.recommended && (
+            <span className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+              ✓ Recommended
+            </span>
+          )}
+          {mode.transitStops && !mode.nextDepartureTime && (
+            <span className="bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+              ⚠️ Schedule
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Emissions, Time, Cost row */}

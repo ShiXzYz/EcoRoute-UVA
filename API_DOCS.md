@@ -42,7 +42,7 @@ Calculate and rank all transportation modes for a trip from origin to destinatio
   "modes": [
     {
       "mode": "uts_bus",
-      "label": "UTS Bus — Departs in 12 min (10:45)",
+      "label": "UVA Transit (Gold Line) — Departs 12 min (10:45)",
       "gCO2e": 89,
       "timeMin": 22,
       "costUSD": 0,
@@ -50,11 +50,33 @@ Calculate and rank all transportation modes for a trip from origin to destinatio
       "icon": "bus",
       "recommended": true,
       "transitStops": {
-        "origin": { "id": "UVA-001", "lat": 38.0293, "lon": -78.4767 },
-        "destination": { "id": "UVA-002", "lat": 38.0336, "lon": -78.5080 }
+        "origin": { "id": "TL-57", "lat": 38.0293, "lon": -78.4767, "name": "Alderman & Rue" },
+        "destination": { "id": "TL-57", "lat": 38.0336, "lon": -78.5080, "name": "Darden School" }
       },
+      "shapePoints": [
+        { "lat": 38.0293, "lng": -78.4767 },
+        { "lat": 38.0305, "lng": -78.4850 },
+        { "lat": 38.0336, "lng": -78.5080 }
+      ],
       "nextDepartureTime": "10:45",
       "minutesUntilDeparture": 12
+    },
+    {
+      "mode": "cat_bus",
+      "label": "CAT Transit (Emmet St/Seminole Trail) — Departs 5 min (10:38)",
+      "gCO2e": 95,
+      "timeMin": 25,
+      "costUSD": 0,
+      "color": "green-600",
+      "icon": "bus",
+      "recommended": false,
+      "transitStops": {
+        "origin": { "id": "7", "lat": 38.0291, "lon": -78.4780, "name": "UVA Corner" },
+        "destination": { "id": "7", "lat": 38.0320, "lon": -78.5000, "name": "Emmet & Ivy" }
+      },
+      "shapePoints": [...],
+      "nextDepartureTime": "10:38",
+      "minutesUntilDeparture": 5
     },
     {
       "mode": "bike",
@@ -84,7 +106,7 @@ Calculate and rank all transportation modes for a trip from origin to destinatio
 
 **Response Fields** (per mode in `modes` array):
 - `mode` (string) — Transportation mode key: solo_car, uts_bus, cat_bus, connect_bus, ebike, escooter, bike, walk
-- `label` (string) — Human-readable mode name with optional timing ("UTS Bus — Departs in 5 min")
+- `label` (string) — Human-readable mode name with friendly route names ("UVA Transit (Gold Line) — Departs 12 min (10:45)")
 - `gCO2e` (number) — Carbon emissions in grams for this trip
 - `timeMin` (number) — Estimated trip duration in minutes
 - `costUSD` (number) — Estimated user cost (0 for transit/bike/walk)
@@ -93,8 +115,10 @@ Calculate and rank all transportation modes for a trip from origin to destinatio
 - `recommended` (boolean) — True only on lowest-carbon option (behavioral nudge)
 - `polyline` (string, optional) — Google Maps encoded polyline (for car, bike, walk modes only)
 - `transitStops` (object, optional) — Origin/destination stop markers from GTFS (transit modes only)
-  - `origin`: { id, lat, lon }
-  - `destination`: { id, lat, lon }
+  - `origin`: { id, lat, lon, name? }
+  - `destination`: { id, lat, lon, name? }
+- `shapePoints` (array, optional) — Clipped polyline from GTFS shapes.txt for drawing bus route on map (transit modes only)
+  - Array of { lat, lng } points
 - `nextDepartureTime` (string, optional) — "HH:MM" format of next bus departure
 - `minutesUntilDeparture` (number, optional) — Minutes until next departure
 
@@ -104,9 +128,11 @@ Calculate and rank all transportation modes for a trip from origin to destinatio
 
 **Notes:**
 - GTFS data is pre-parsed on server startup (from `/data/gtfs-parsed/*.json`)
-- No external API calls from this endpoint (all hardcoded EPA 2023 emission factors)
-- Transit stop markers are within 400m radius of origin/destination coordinates
-- Multiple transit modes returned if routes serve both locations
+- No external API calls for transit modes (GTFS is local)
+- Transit stop markers are within ~1 mile (1600m) radius of origin/destination coordinates
+- One optimal transit mode per agency (UVA, CAT, CONNECT) returned when routes serve both locations
+- Route names from `data/routes.json` for friendly display (Gold Line, Green Line, etc.)
+- Polylines clipped to origin/destination stops using GTFS shapes.txt
 
 ---
 

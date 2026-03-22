@@ -15,6 +15,12 @@ interface RouteData {
   color?: string;
 }
 
+interface TransitStopMarker {
+  origin: { id: string; lat: number; lon: number; name?: string };
+  destination: { id: string; lat: number; lon: number; name?: string };
+  shapePoints?: { lat: number; lng: number }[];
+}
+
 interface MapSelectorProps {
   onLocationSelect: (location: Location, type: 'from' | 'to') => void;
   fromLocation: Location | null;
@@ -22,6 +28,7 @@ interface MapSelectorProps {
   selectedType: 'from' | 'to' | null;
   route?: RouteData | null;
   mode?: string;
+  transitStops?: TransitStopMarker;
 }
 
 const containerStyle = {
@@ -53,6 +60,7 @@ export default function MapSelector({
   selectedType,
   route,
   mode,
+  transitStops,
 }: MapSelectorProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -60,6 +68,8 @@ export default function MapSelector({
   // eslint-disable-next-line
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const transitMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const transitPolylineRef = useRef<google.maps.Polyline | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const lastGeocodeTime = useRef<number>(0);
@@ -192,6 +202,78 @@ export default function MapSelector({
       map.fitBounds(bounds, 50);
     }
   }, [mapReady, fromLocation, toLocation, route, mode]);
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+
+    transitMarkersRef.current.forEach(marker => marker.map = null);
+    transitMarkersRef.current = [];
+    if (transitPolylineRef.current) {
+      transitPolylineRef.current.setMap(null);
+    }
+
+    if (!transitStops) return;
+
+    const map = mapInstanceRef.current;
+
+    const transitModes = ['uts_bus', 'cat_bus', 'connect_bus'];
+    const isTransitMode = mode && transitModes.some(t => mode.startsWith(t));
+    if (!isTransitMode) return;
+
+    if (transitStops.origin) {
+      const originName = transitStops.origin.name || transitStops.origin.id;
+      const originMarker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: transitStops.origin.lat, lng: transitStops.origin.lon },
+        title: `🚌 Board here: ${originName}`,
+      });
+      transitMarkersRef.current.push(originMarker);
+    }
+
+    if (transitStops.destination) {
+      const destName = transitStops.destination.name || transitStops.destination.id;
+      const destMarker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: transitStops.destination.lat, lng: transitStops.destination.lon },
+        title: `🚌 Get off here: ${destName}`,
+      });
+      transitMarkersRef.current.push(destMarker);
+    }
+
+    // Draw polyline for transit route
+    if (transitStops.shapePoints && transitStops.shapePoints.length > 1) {
+      const agencyColors: Record<string, string> = {
+        uts_bus: '#232D4B',
+        cat_bus: '#007A53',
+        connect_bus: '#D97706',
+      };
+      const transitModeKey = Object.keys(agencyColors).find(k => mode?.startsWith(k)) || 'uts_bus';
+      const polylineColor = agencyColors[transitModeKey] || '#3B82F6';
+
+      transitPolylineRef.current = new google.maps.Polyline({
+        path: transitStops.shapePoints.map(p => ({ lat: p.lat, lng: p.lng })),
+        strokeColor: polylineColor,
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        map,
+      });
+    }
+
+    if (fromLocation) {
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({ lat: fromLocation.lat, lng: fromLocation.lng });
+      if (transitStops.origin) {
+        bounds.extend({ lat: transitStops.origin.lat, lng: transitStops.origin.lon });
+      }
+      if (transitStops.destination) {
+        bounds.extend({ lat: transitStops.destination.lat, lng: transitStops.destination.lon });
+      }
+      if (toLocation) {
+        bounds.extend({ lat: toLocation.lat, lng: toLocation.lng });
+      }
+      map.fitBounds(bounds, 80);
+    }
+  }, [mapReady, transitStops, mode, fromLocation, toLocation]);
 
   if (loadError) {
     return (

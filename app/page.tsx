@@ -62,9 +62,10 @@ interface ModeScore {
   polyline?: string;                           // Google Maps encoded polyline
   bikeWarning?: boolean;
   transitStops?: {                             // GTFS stop markers
-    origin: { id: string; lat: number; lon: number };
-    destination: { id: string; lat: number; lon: number };
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
   };
+  shapePoints?: { lat: number; lng: number }[];
   nextDepartureTime?: string;                  // "HH:MM"
   minutesUntilDeparture?: number;
 }
@@ -210,7 +211,14 @@ export default function GPSPage() {
   const handleModeSelect = (mode: ModeScore) => {
     setSelectedMode(mode.mode);
     setSelectedModeData(mode);
-    fetchDirections(mode.mode);
+    
+    // Only fetch directions for non-transit modes (car, bike, walk, ebike, escooter)
+    // Transit modes already have stop markers from GTFS in the mode data
+    const transitModes = ['uts_bus', 'cat_bus', 'connect_bus'];
+    const isTransitMode = transitModes.some(t => mode.mode.startsWith(t));
+    if (!isTransitMode) {
+      fetchDirections(mode.mode);
+    }
   };
 
   /**
@@ -394,6 +402,10 @@ export default function GPSPage() {
           selectedType={selectedType}
           route={route}
           mode={selectedMode || undefined}
+          transitStops={selectedModeData?.transitStops ? {
+            ...selectedModeData.transitStops,
+            shapePoints: selectedModeData.shapePoints,
+          } : undefined}
           key={route ? `route-${selectedMode}` : 'no-route'}
         />
       </div>

@@ -8,10 +8,8 @@
 
 **EcoRoute-UVA** is a mobile-first web app for UVA students, health workers, and faculty that makes the greenest commute option the default choice. Users enter an origin and destination on the GPS page; the app displays a map with all available transport mode options ranked by gCO₂e, with the lowest-carbon option pre-selected (behavioral default nudge). A streak system rewards consecutive days of green choices. The stats page surfaces impact metrics: CO₂ saved from worst-case (driving) converted to tree equivalents, gas cost savings, transit/micromobility usage counts, and progress toward UVA's 2030 Scope 3 carbon-neutrality goal.
 
-**Status:** UVA Sustainable IT Hackathon. Two-person team building during the event.  
-**Current phase:** Backend/frontend integration in progress. Google Maps API setup underway. No external APIs fully integrated yet.  
-**Constraint:** 24-hour hackathon. Two-person team. Software only, no hardware.  
-**Architecture approach:** Every decision favors simplicity and speed over elegance.
+**Status:** Active development.  
+**Architecture approach:** GTFS-based transit routing with no runtime API calls for buses.
 
 ---
 
@@ -320,33 +318,38 @@ create table streaks (
 
 ## GTFS integration
 
-**Pre-hackathon:** Download both feeds and run a parse script to produce JSON.
+**GTFS feeds loaded from local JSON files** (parsed from ZIPs, no runtime API calls):
 
-- UVA GTFS: Transitland feed ID `f-university~of~virginia` (23 routes, 108 stops)
-- CAT GTFS: `https://apps.charlottesville.gov/publicfiles/Charlottesvilleareatransit_gtfs.zip`
+- UVA GTFS: 217 stops, 16 routes
+- CAT GTFS: 366 stops, 12 routes
+- JAUNT/CONNECT: 39 stops, 9 routes
 
-**Parse script produces** `data/uva-gtfs.json` and `data/cat-gtfs.json` with shape:
+**Parse script (`scripts/parse-gtfs.js`) produces** `data/gtfs-parsed/*.json` with shape:
 ```json
 {
-  "stops": [{ "id": "s1", "name": "Alderman Rd", "lat": 38.035, "lon": -78.508 }],
-  "routes": [{ "id": "r1", "name": "Route 7", "stopIds": ["s1", "s2"] }],
-  "departures": { "s1": ["07:15", "07:45", "08:15"] }
+  "stops": [{ "id": "TL-57", "name": "Alderman & Rue", "lat": 38.035, "lon": -78.508 }],
+  "routes": [{ "id": "TL-57", "short_name": "Gold Line", "long_name": "Gold Line" }],
+  "departures": { "TL-57": { "monday": ["07:15", "07:45", "08:15"] } },
+  "shapes": { "shape_1": [{ "lat": 38.035, "lng": -78.508, "seq": 1 }] },
+  "route_shape_ids": { "TL-57": "shape_1" }
 }
 ```
 
-**`lib/gtfs.ts` key function:**
+**`lib/gtfs.ts` key functions:**
 ```typescript
-export function getNearestTransit(
-  originLat: number,
-  originLon: number,
-  feeds: GTFSFeed[]
-): { routeName: string; nextDeparture: string; walkMinutes: number }[]
-// Returns routes with stops within 400m, sorted by walk distance.
-// nextDeparture: finds next departure after current time from departures table.
-// walkMinutes: haversine distance / 80m per minute walking speed.
+getNearestStops(lat, lon, radiusMeters) // Find stops within radius
+getNextDeparture(stopId, feed) // Get next departure time
+findConnectingStops(originStops, destStops, feed) // Find routes serving both
+getShapePoints(feed, shapeId) // Get polyline points for route
+getRouteName(feed, routeId) // Get friendly route name from routes.json
 ```
 
-**Fallback:** If GTFS lookup fails, return `nextDeparture: "Check UVA.edu/transit"`. Never crash — always return a result.
+**Route names** defined in `data/routes.json`:
+- UVA: Gold Line, Green Line, Orange Loop, Purple Line, Silver Line
+- CAT: Route numbers with full destination names
+- CONNECT: Crozet, Buckingham, Lovingston, Route 29 North
+
+**Fallback:** If GTFS lookup fails, return `nextDeparture: null` with "Check Schedule" badge. Never crash — always return a result.
 
 ---
 
@@ -498,14 +501,14 @@ Currently, **persona is not required** for MVP. Focus on core route selection & 
 
 | Mode key | Label | Free for UVA? | Notes |
 |---|---|---|---|
-| `uts_bus` | UTS Bus | Yes | On-Grounds routes, real-time via TransLoc |
-| `cat_bus` | CAT Transit | Yes | Charlottesville public bus |
-| `connect_bus` | CONNECT Bus | Yes (UVA affiliates) | Regional: Crozet, Rte 29 N, Lovingston |
-| `afton_express` | Afton Express | Yes (UVA affiliates) | Staunton/Waynesboro over mountain |
-| `bike` | Bike | Yes | Weather-adjusted viability |
-| `walk` | Walk | Yes | Only show if distance < 1.5 miles |
-| `ebike/escooter` | E-transit | $1 unlock, $0.39 per mile | VEO service |
-| `solo_car` | Drive solo | No | Always the worst CO₂ option — show as baseline |
+| `uts_bus` | UVA Transit | Yes | Gold Line, Green Line, etc. (friendly names from routes.json) |
+| `cat_bus` | CAT Transit | Yes | Charlottesville public bus, route numbers |
+| `connect_bus` | CONNECT | Yes (UVA affiliates) | Regional: Crozet, Rte 29 N, Lovingston |
+| `bike` | Bike | Yes | Zero emissions |
+| `walk` | Walk | Yes | Zero emissions |
+| `ebike` | E-Bike (VEO) | $1 unlock, $0.39/mile | VEO service |
+| `escooter` | E-Scooter (VEO) | $1 unlock, $0.39/mile | VEO service |
+| `solo_car` | Drive solo | No | Always worst CO₂ — baseline for savings |
 
 ---
 
@@ -570,27 +573,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=  # From Supabase project settings
 
 ---
 
-## Demo script — 3 scripted trips for judging
+## Demo script — Testing transit modes
 
-**Trip 1 — GPS Page:**
-- Origin: Old Dorms (~38.0245, -78.5018)
-- Destination: Shannon Library, UVA
-- Expected result: Walking or bike recommended (shortest distance, low emissions)
-- UI demo: Show map updating with polyline, mode selection, trip logging
-- Talking point: "The Google Map shows the exact route you'll take — no ambiguity. It updates instantly when you switch modes."
+**Transit routes appear when origin/destination are within ~1 mile of bus stops.**
 
-**Trip 2 — Stats Page:**
-- After logging 5+ demo trips with mixed modes
-- Navigate to Stats tab
-- Show tree equivalency, gas savings, transit count, 2030 progress
-- Talking point: "Every trip compounds into measurable impact. This week's choices grew the equivalent of X trees."
+- **Test UVA Transit:** Search near campus bus stops
+- **Test CAT Transit:** Search near Emmet Street corridor
+- **Test CONNECT:** Search toward Crozet or Route 29 North area
 
-**Trip 3 — Transit Mode:**
-- Origin: Pantops (~38.0350, -78.4580)
-- Destination: UVA Health Main Hospital
-- Expected result: UTS Bus or CAT Route 7 selected
-- UI demo: Map shows stop markers instead of polyline (GTFS data); log the trip
-- Talking point: "For transit, we show origin stop and destination stop. GTFS keeps us accurate without live API dependencies."
+Expected: Mode cards show friendly route names (Gold Line, Green Line, etc.) with departure times. Map shows colored polyline clipped to the relevant bus route segment.
 
 ---
 

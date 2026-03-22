@@ -40,6 +40,10 @@ export interface GTFSFeed {
   departures: Record<string, Record<string, string[]>>;
   // Lookup: stop_id -> [route_ids that serve this stop]
   stop_routes: Record<string, string[]>;
+  // Full shape polylines: shape_id -> [{lat, lng, seq}]
+  shapes: Record<string, {lat: number, lng: number, seq: number}[]>;
+  // Route ID -> Shape ID lookup
+  route_shape_ids: Record<string, string>;
 }
 
 /**
@@ -47,6 +51,51 @@ export interface GTFSFeed {
  * Loaded once at module initialization (on server startup)
  */
 const FEEDS = new Map<string, GTFSFeed>();
+
+/**
+ * Route name mapping for friendly display names
+ * Loaded from data/routes.json
+ */
+let ROUTE_NAMES: Record<string, Record<string, { name: string; color: string }>> = {};
+
+/**
+ * Load route name mappings from routes.json
+ */
+function loadRouteNames(): void {
+  try {
+    const routesPath = path.join(process.cwd(), 'data/routes.json');
+    if (fs.existsSync(routesPath)) {
+      const rawData = fs.readFileSync(routesPath, 'utf-8');
+      ROUTE_NAMES = JSON.parse(rawData);
+      console.log('[GTFS] Loaded route name mappings');
+    }
+  } catch (err) {
+    console.warn('[GTFS] Failed to load routes.json:', err);
+  }
+}
+
+/**
+ * Get friendly route name and color for a route ID
+ * @param feed Feed name (e.g., 'uva-gtfs')
+ * @param routeId Route ID from GTFS
+ * @returns { name, color } or undefined
+ */
+export function getRouteName(feed: string, routeId: string): { name: string; color: string } | undefined {
+  const feedRoutes = ROUTE_NAMES[feed];
+  if (!feedRoutes) return undefined;
+  
+  // Check specific route ID mapping
+  if (feedRoutes[routeId]) {
+    return feedRoutes[routeId];
+  }
+  
+  // Check default mapping
+  if (feedRoutes['_default']) {
+    return feedRoutes['_default'];
+  }
+  
+  return undefined;
+}
 
 /**
  * Load all GTFS feeds from data/gtfs-parsed/ directory
@@ -85,6 +134,7 @@ function loadFeeds(): void {
 
 // Initialize on module load (in server context only)
 loadFeeds();
+loadRouteNames();
 
 /**
  * Calculate straight-line distance between two geographic points using Haversine formula
@@ -226,6 +276,7 @@ export function findConnectingStops(
   originStop: GTFSStop;
   destStop: GTFSStop;
   routes: GTFSRoute[];
+  shapeId: string | null;
 }> {
   const feedData = FEEDS.get(feed);
   if (!feedData) {
@@ -236,6 +287,7 @@ export function findConnectingStops(
     originStop: GTFSStop;
     destStop: GTFSStop;
     routes: GTFSRoute[];
+    shapeId: string | null;
   }> = [];
 
   for (const originStop of originStops) {
@@ -255,12 +307,32 @@ export function findConnectingStops(
           .map(id => feedData.routes.find(r => r.id === id))
           .filter((r): r is GTFSRoute => r !== undefined);
 
-        connections.push({ originStop, destStop, routes });
+        // Get shape_id from first shared route
+        const shapeId = feedData.route_shape_ids?.[sharedRouteIds[0]] || null;
+
+        connections.push({ originStop, destStop, routes, shapeId });
       }
     }
   }
 
   return connections;
+}
+
+/**
+ * Get shape points (polyline) for a route
+ * @param feed Feed name
+ * @param shapeId Shape ID
+ * @returns Array of {lat, lng} points
+ */
+export function getShapePoints(
+  feed: string,
+  shapeId: string,
+): {lat: number, lng: number}[] {
+  const feedData = FEEDS.get(feed);
+  if (!feedData || !feedData.shapes || !feedData.shapes[shapeId]) {
+    return [];
+  }
+  return feedData.shapes[shapeId].map(p => ({ lat: p.lat, lng: p.lng }));
 }
 
 /**
