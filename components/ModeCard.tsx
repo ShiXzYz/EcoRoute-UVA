@@ -1,50 +1,34 @@
 'use client';
 
-interface ModeScore {
-  mode: string;
-  label: string;
-  gCO2e: number;
-  timeMin: number;
-  costUSD: number;
-  recommended: boolean;
-  icon: string;
-  color: string;
-  warning?: string;
-}
+import { ModeResult } from '@/types';
 
 interface ModeCardProps {
-  mode: ModeScore;
+  mode: ModeResult;
   isSelected: boolean;
   baseline: number;
   onSelect: () => void;
   onLogTrip: () => void;
 }
 
-function getEmissionColor(gCO2e: number, baseline: number): string {
-  const percent = (gCO2e / baseline) * 100;
-  if (percent <= 20) return 'text-green-600';
-  if (percent <= 50) return 'text-emerald-600';
-  if (percent <= 75) return 'text-amber-600';
+/**
+ * Tailwind color class based on emissions intensity
+ */
+function getEmissionColor(gCO2e: number): string {
+  if (gCO2e < 100) return 'text-green-600';
+  if (gCO2e < 500) return 'text-amber-600';
   return 'text-red-600';
 }
 
-function getEmissionLabel(gCO2e: number, baseline: number): string {
-  if (gCO2e === 0) return 'Zero emissions';
-  const percent = Math.round((gCO2e / baseline) * 100);
-  return `${percent}% of driving solo`;
-}
-
-function calculateTreesNeeded(gCO2e: number): number {
-  // Average tree absorbs ~21.77 kg CO2 per year
-  // For a single trip, we calculate: grams / (21.77kg * 1000) = trees needed per trip
-  return Math.max(0, Math.round((gCO2e / 1000) / 21.77 * 100) / 100);
-}
-
-function calculateTreesSaved(baselineGCO2e: number, modeGCO2e: number): number {
-  const savings = baselineGCO2e - modeGCO2e;
-  return Math.max(0, Math.round((savings / 1000) / 21.77 * 100) / 100);
-}
-
+/**
+ * ModeCard — Single transportation option in GPS page
+ * 
+ * Displays:
+ * - Mode icon + name with timing (e.g., "UTS Bus — Departs in 5 min (14:30)")
+ * - Emissions in grams CO₂e
+ * - Trip duration and user cost
+ * - "Recommended" badge if lowest-emissions option
+ * - "I took this route" button for trip logging
+ */
 export default function ModeCard({
   mode,
   isSelected,
@@ -52,9 +36,6 @@ export default function ModeCard({
   onSelect,
   onLogTrip,
 }: ModeCardProps) {
-  const treesSaved = calculateTreesSaved(baseline, mode.gCO2e);
-  const soloCarTrees = calculateTreesNeeded(baseline);
-  
   return (
     <div
       onClick={onSelect}
@@ -62,34 +43,40 @@ export default function ModeCard({
         isSelected
           ? 'border-green-500 bg-green-50 shadow-md'
           : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-      } ${mode.recommended && !isSelected ? 'ring-2 ring-green-200' : ''}`}
+      } ${mode.recommended ? 'ring-2 ring-green-300' : ''}`}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{mode.icon}</span>
-          <div>
-            <p className="font-semibold text-slate-900">{mode.label}</p>
-            {mode.warning && (
-              <p className="text-xs text-amber-600 font-medium">⚠️ {mode.warning}</p>
-            )}
-          </div>
+      {/* Header: Mode name + badges */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1">
+          <p className="font-semibold text-slate-900">{mode.label}</p>
+          {/* Show transit departure timing if available */}
+          {mode.minutesUntilDeparture !== undefined && mode.nextDepartureTime && (
+            <p className="text-xs text-green-600 font-semibold mt-1">
+              ⏱️ Departs {mode.minutesUntilDeparture} min ({mode.nextDepartureTime})
+            </p>
+          )}
         </div>
-        {mode.recommended && (
-          <span className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-            ✓ Best
-          </span>
-        )}
+        <div className="flex flex-col gap-1 ml-2">
+          {mode.recommended && (
+            <span className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+              ✓ Recommended
+            </span>
+          )}
+          {mode.transitStops && !mode.nextDepartureTime && (
+            <span className="bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+              ⚠️ Schedule
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Emissions & Details */}
-      <div className="grid grid-cols-3 gap-3 mb-3 pb-3 border-b border-slate-200">
+      {/* Emissions, Time, Cost row */}
+      <div className="grid grid-cols-3 gap-3 pb-3 border-b border-slate-200">
         <div>
           <p className="text-xs text-slate-600 font-medium">CO₂</p>
-          <p className={`text-lg font-bold ${getEmissionColor(mode.gCO2e, baseline)}`}>
+          <p className={`text-lg font-bold ${getEmissionColor(mode.gCO2e)}`}>
             {mode.gCO2e.toLocaleString()}g
           </p>
-          <p className="text-xs text-slate-600">{getEmissionLabel(mode.gCO2e, baseline)}</p>
         </div>
         <div>
           <p className="text-xs text-slate-600 font-medium">Time</p>
@@ -101,21 +88,10 @@ export default function ModeCard({
           <p className="text-lg font-bold text-slate-900">
             {mode.costUSD === 0 ? 'Free' : `$${mode.costUSD}`}
           </p>
-          <p className="text-xs text-slate-600">&nbsp;</p>
         </div>
       </div>
 
-      {/* Tree Impact */}
-      <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded">
-        <p className="text-sm text-slate-800">
-          <span className="font-semibold">🌱 Impact:</span> You saved <span className="font-bold text-green-600">{treesSaved} trees</span> vs driving solo!
-        </p>
-        <p className="text-xs text-slate-600 mt-1">
-          (Solo car: ~{soloCarTrees} trees needed to offset)
-        </p>
-      </div>
-
-      {/* Log Trip Button */}
+      {/* Log Trip Button (only shown when selected) */}
       {isSelected && (
         <button
           onClick={(e) => {

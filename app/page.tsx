@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * GPS Page — Primary EcoRoute interaction surface
+ * 
+ * Users:
+ * 1. Enter origin + destination via Google Places Autocomplete (SearchBar)
+ * 2. Map displays:
+ *    - Blue pin: origin
+ *    - Green pin: destination
+ *    - Orange pins: nearest bus stops (from GTFS data)
+ * 3. Select from ranked transport options (car, bike, bus, walk)
+ * 4. Map updates with polyline (car/bike/walk) or stop markers (transit)
+ * 5. Log trip: "I took this route today" → streak updates
+ * 
+ * Architecture:
+ * - /api/score: Calculate & rank all modes (POST)
+ * - MapSelector: Google Maps display
+ * - SlideUpPanel: Pullable bottom sheet with mode cards
+ * - SearchBar: Google Places Autocomplete input
+ */
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -47,8 +66,30 @@ function calculateCurrentStreak(trips: any[]): number {
   return streak;
 }
 
+declare global {
+  interface Window {
+    google: {
+      maps: {
+        DirectionsService: any;
+        DirectionsRenderer: any;
+        LatLng: any;
+        TravelMode: any;
+        geometry: {
+          encoding: {
+            decodePath: (path: any) => any;
+          };
+        };
+      };
+    };
+  }
+}
+
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
+/**
+ * ModeScore extended with transit fields
+ * See API_DOCS.md for full reference
+ */
 interface ModeScore {
   mode: string;
   label: string;
@@ -58,6 +99,15 @@ interface ModeScore {
   recommended: boolean;
   icon: string;
   color: string;
+  polyline?: string;                           // Google Maps encoded polyline
+  bikeWarning?: boolean;
+  transitStops?: {                             // GTFS stop markers
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
+  };
+  shapePoints?: { lat: number; lng: number }[];
+  nextDepartureTime?: string;                  // "HH:MM"
+  minutesUntilDeparture?: number;
 }
 
 interface Location {
@@ -72,6 +122,11 @@ interface RouteData {
   color?: string;
 }
 
+/**
+ * Haversine distance calculation (miles)
+ * Used client-side for rough distance estimation
+ * Server calls Google Directions API for authoritative distance
+ */
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3959;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -86,12 +141,19 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 }
 
-export default function Home() {
+export default function GPSPage() {
+  // Trip state
   const [scores, setScores] = useState<ModeScore[] | null>(null);
-  const [baseline, setBaseline] = useState<number>(0);
   const [distance, setDistance] = useState<number>(0);
+  const [baseline, setBaseline] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [selectedModeData, setSelectedModeData] = useState<ModeScore | null>(null);
+
+  // Streak state (from localStorage or Supabase)
+  const [streak, setStreak] = useState<number>(0);
+
+  // Search/location state
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -125,6 +187,10 @@ export default function Home() {
     };
   }, []);
 
+  /**
+   * Handle location selection from Google Places Autocomplete
+   * Once both origin and destination are selected, call /api/score
+   */
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
@@ -160,25 +226,30 @@ export default function Home() {
     }
   };
 
+  /**
+   * Call /api/score to get ranked transportation modes
+   * Response includes polylines, transit stops, and next departure times
+   */
   const fetchScores = async (from: Location, to: Location) => {
     setLoading(true);
     setSelectedMode(null);
+    setScores(null);
 
     try {
+      // Client-side distance (rough estimate for UI)
       const distance_miles = calculateDistance(from.lat, from.lng, to.lat, to.lng);
+      setDistance(distance_miles);
 
+      // Call server endpoint
       const response = await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: from.name,
-          destination: to.name,
-          distance_miles,
-          persona: 'Student',
-          weather: {
-            rain_probability: 10,
-            wind_speed: 8,
-          },
+          originLat: from.lat,
+          originLon: from.lng,
+          destinationLat: to.lat,
+          destinationLon: to.lng,
+          distance_miles,  // Passed for reference; server calls Google Directions for truth
         }),
       });
 
@@ -193,11 +264,28 @@ export default function Home() {
       setPanelExpanded(true); // Always expand when panel opens
     } catch (error) {
       console.error('Error scoring trip:', error);
+      alert('Failed to calculate routes. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Handle mode selection from card
+   * Updates map with polyline or transit stop markers
+   */
+  const handleModeSelect = (mode: ModeScore) => {
+    setSelectedMode(mode.mode);
+    setSelectedModeData(mode);
+    
+    // Only fetch directions for non-transit modes (car, bike, walk, ebike, escooter)
+    // Transit modes already have stop markers from GTFS in the mode data
+    const transitModes = ['uts_bus', 'cat_bus', 'connect_bus'];
+    const isTransitMode = transitModes.some(t => mode.mode.startsWith(t));
+    if (!isTransitMode) {
+      fetchDirections(mode.mode);
+    }
+  };
   const handleLogTrip = async (mode: string, gCO2e: number) => {
     const tripEntry = {
       mode,
@@ -352,11 +440,6 @@ export default function Home() {
     setTimeout(tryFetch, 300);
   };
 
-  const handleModeSelect = (mode: string) => {
-    setSelectedMode(mode);
-    fetchDirections(mode);
-  };
-
   return (
     <main className="relative h-screen w-screen overflow-hidden">
       {/* Full Screen Map - with top and bottom padding */}
@@ -376,6 +459,10 @@ export default function Home() {
           selectedType={selectedType}
           route={route}
           mode={selectedMode || undefined}
+          transitStops={selectedModeData?.transitStops ? {
+            ...selectedModeData.transitStops,
+            shapePoints: selectedModeData.shapePoints,
+          } : undefined}
           mapType={mapType}
           onMapTypeChange={setMapType}
           key={route ? `route-${selectedMode}` : 'no-route'}
@@ -509,8 +596,14 @@ export default function Home() {
         onClose={() => setPanelOpen(false)}
         onCollapse={() => setPanelExpanded(false)}
         onExpand={() => setPanelExpanded(true)}
-        onSelect={handleModeSelect}
-        onLogTrip={handleLogTrip}
+        onSelect={(modeString: string) => {
+          const mode = scores?.find((m) => m.mode === modeString);
+          if (mode) handleModeSelect(mode);
+        }}
+        onLogTrip={(modeString: string, gCO2e: number) => {
+          const mode = scores?.find((m) => m.mode === modeString);
+          if (mode) handleLogTrip(mode);
+        }}
       />
 
       {/* Bottom Navigation */}

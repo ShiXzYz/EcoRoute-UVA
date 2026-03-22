@@ -13,6 +13,13 @@ interface ModeScore {
   icon: string;
   color: string;
   warning?: string;
+  transitStops?: {
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
+  };
+  shapePoints?: { lat: number; lng: number }[];
+  nextDepartureTime?: string;
+  minutesUntilDeparture?: number;
 }
 
 interface SlideUpPanelProps {
