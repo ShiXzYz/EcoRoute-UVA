@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import SearchBar from '@/components/SearchBar';
@@ -8,7 +8,44 @@ import SlideUpPanel from '@/components/SlideUpPanel';
 import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/lib/auth';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
-import { addTrip, saveTripToSupabase } from '@/lib/trips';
+import { addTrip, saveTripToSupabase, loadTrips } from '@/lib/trips';
+
+const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
+
+function calculateCurrentStreak(trips: any[]): number {
+  const greenTrips = trips.filter(t => GREEN_MODES.includes(t.mode));
+  if (greenTrips.length === 0) return 0;
+
+  const greenDays = new Set<string>();
+  greenTrips.forEach(trip => {
+    greenDays.add(new Date(trip.date).toDateString());
+  });
+
+  const sortedDays = Array.from(greenDays).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  
+  const today = new Date().toDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toDateString();
+
+  const mostRecentDay = sortedDays[0];
+  if (mostRecentDay !== today && mostRecentDay !== yesterdayStr) {
+    return 0;
+  }
+
+  let streak = 0;
+  let checkDate = new Date(mostRecentDay);
+  for (const day of sortedDays) {
+    const dayDate = new Date(day);
+    if (dayDate.toDateString() === checkDate.toDateString()) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
 
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
@@ -55,7 +92,6 @@ export default function Home() {
   const [distance, setDistance] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
-  const [streak, setStreak] = useState<number>(0);
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -65,7 +101,29 @@ export default function Home() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [tripCount, setTripCount] = useState(0);
   const { user } = useAuth();
+
+  useEffect(() => {
+    const trips = loadTrips();
+    setTripCount(trips.length);
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = () => {
+      const trips = loadTrips();
+      setTripCount(trips.length);
+    };
+    window.addEventListener('storage', handleStorage);
+    const interval = setInterval(() => {
+      const trips = loadTrips();
+      setTripCount(trips.length);
+    }, 1000);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
@@ -149,6 +207,8 @@ export default function Home() {
     };
 
     addTrip(tripEntry);
+    const trips = loadTrips();
+    setTripCount(trips.length);
 
     if (user) {
       const saved = await saveTripToSupabase(user.id, tripEntry);
@@ -157,8 +217,7 @@ export default function Home() {
       }
     }
 
-    setStreak(streak + 1);
-    console.log('Logged trip:', { mode, gCO2e, distance, streak: streak + 1 });
+    console.log('Logged trip:', { mode, gCO2e, distance, trips: trips.length });
   };
 
   const fetchDirections = (selectedMode: string) => {
@@ -409,11 +468,11 @@ export default function Home() {
       </div>
 
       {/* Streak Badge - Below Top Bar Right */}
-      {streak > 0 && (
+      {tripCount > 0 && (
         <div className="absolute top-16 right-2 sm:right-4" style={{ zIndex: 100 }}>
           <div className="bg-white rounded-full shadow-lg px-3 py-2 flex items-center gap-2">
             <span className="text-lg">🔥</span>
-            <span className="font-bold text-uva-primary text-sm">{streak}</span>
+            <span className="font-bold text-uva-primary text-sm">{calculateCurrentStreak(loadTrips())}</span>
           </div>
         </div>
       )}
