@@ -49,7 +49,7 @@ export default function SlideUpPanel({
 
   useEffect(() => {
     if (isOpen) {
-      setCurrentHeight(isExpanded ? window.innerHeight * 0.85 : window.innerHeight * 0.2);
+      setCurrentHeight(isExpanded ? window.innerHeight * 0.6 : window.innerHeight * 0.15);
     }
   }, [isOpen, isExpanded]);
 
@@ -63,8 +63,8 @@ export default function SlideUpPanel({
     : 0;
 
   const getSnapHeights = () => ({
-    snapCollapsed: typeof window !== 'undefined' ? window.innerHeight * 0.15 : 150,
-    snapExpanded: typeof window !== 'undefined' ? window.innerHeight * 0.85 : 600,
+    snapCollapsed: typeof window !== 'undefined' ? window.innerHeight * 0.12 : 100,
+    snapExpanded: typeof window !== 'undefined' ? window.innerHeight * 0.6 : 450,
   });
 
   const snapToPosition = (newHeight: number) => {
@@ -88,8 +88,8 @@ export default function SlideUpPanel({
   const handleDragMove = (clientY: number) => {
     if (!isDragging.current) return;
     const delta = (startY.current - clientY) * 1.5;
-    const minHeight = typeof window !== 'undefined' ? window.innerHeight * 0.1 : 100;
-    const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.95 : 700;
+    const minHeight = typeof window !== 'undefined' ? window.innerHeight * 0.08 : 60;
+    const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.7 : 550;
     const newHeight = Math.min(Math.max(startHeight.current + delta, minHeight), maxHeight);
     setCurrentHeight(newHeight);
   };
@@ -143,10 +143,10 @@ export default function SlideUpPanel({
           className="px-4 py-3 border-b border-slate-100 flex-shrink-0 cursor-pointer hover:bg-slate-50 transition-colors"
           onClick={() => {
             if (isExpanded) {
-              setCurrentHeight(window.innerHeight * 0.2);
+              setCurrentHeight(window.innerHeight * 0.15);
               onCollapse();
             } else {
-              setCurrentHeight(window.innerHeight * 0.85);
+              setCurrentHeight(window.innerHeight * 0.6);
               onExpand();
             }
           }}

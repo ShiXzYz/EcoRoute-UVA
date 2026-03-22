@@ -125,6 +125,7 @@ export default function Home() {
       setRoute(null);
 
       setPanelOpen(true);
+      setPanelExpanded(true); // Always expand when panel opens
     } catch (error) {
       console.error('Error scoring trip:', error);
     } finally {

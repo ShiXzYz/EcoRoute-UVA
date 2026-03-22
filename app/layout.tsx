@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { GoogleMapsProvider } from "@/lib/GoogleMapsContext";
+import SuppressWarnings from "@/components/SuppressWarnings";
 
 export const metadata: Metadata = {
   title: "EcoRoute - UVA Carbon-Smart Routing",
@@ -24,6 +25,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <GoogleMapsProvider>
+          <SuppressWarnings />
           {children}
         </GoogleMapsProvider>
       </body>
