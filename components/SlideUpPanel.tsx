@@ -7,6 +7,7 @@ interface ModeScore {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
@@ -33,7 +34,7 @@ interface SlideUpPanelProps {
   onCollapse: () => void;
   onExpand: () => void;
   onSelect: (mode: string) => void;
-  onLogTrip: (mode: string, gCO2e: number) => void;
+  onLogTrip: (mode: string, co2Saved: number) => void;
 }
 
 export default function SlideUpPanel({
@@ -64,7 +65,8 @@ export default function SlideUpPanel({
     onSelect(mode.mode);
   };
 
-  const savings = baseline - (selectedMode ? modes.find(m => m.mode === selectedMode)?.gCO2e || 0 : 0);
+  const selectedModeData = selectedMode ? modes.find(m => m.mode === selectedMode) : null;
+  const savings = selectedModeData?.co2Saved || 0;
   const savingsPercent = selectedMode && baseline > 0 
     ? Math.round((savings / baseline) * 100) 
     : 0;
@@ -195,7 +197,7 @@ export default function SlideUpPanel({
                   isSelected={selectedMode === mode.mode}
                   baseline={baseline}
                   onSelect={() => handleModeSelect(mode)}
-                  onLogTrip={() => onLogTrip(mode.mode, mode.gCO2e)}
+                  onLogTrip={() => onLogTrip(mode.mode, mode.co2Saved)}
                 />
               ))}
             </div>

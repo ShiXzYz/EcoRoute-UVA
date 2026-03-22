@@ -18,23 +18,30 @@ import { getNearestStops, getNextDeparture, findConnectingStops, getShapePoints,
  * 
  * Key modes:
  * - solo_car: 400 — average passenger vehicle (baseline)
+ * - carpool_2: 200 — 2 people sharing
+ * - carpool_3: 133 — 3 people sharing
  * - uts_bus, cat_bus, connect_bus: 44 — transit bus at 45% load factor (UVA free)
- * - ebike: 65 — VEO operations + manufacturing
- * - escooter: 70 — VEO operations + manufacturing
- * - bike, walk: 0 — zero operational emissions
+ * - ebike: 8 — electric bike
+ * - bike: 0 — zero operational emissions
+ * - walk: 0 — zero operational emissions
+ * - ev: 120 — electric vehicle
  * 
  * Do NOT fetch from external sources. These are fixed for MVP.
  */
-const EMISSION_FACTORS = {
+const EMISSION_FACTORS: Record<string, number> = {
   solo_car: 400,
+  carpool_2: 200,
+  carpool_3: 133,
   uts_bus: 44,
   cat_bus: 44,
   connect_bus: 44,
-  ebike: 65,
-  escooter: 70,
+  ebike: 8,
   bike: 0,
   walk: 0,
+  ev: 120,
 };
+
+const BASELINE_EMISSIONS = 400; // solo car emissions per mile
 
 /**
  * Score request structure — minimal GPS data from client
@@ -57,6 +64,7 @@ interface ScoreRequest {
  * - mode: Key used in emissions calculations
  * - label: Human-readable text with timing (e.g., "UTS Bus — in 5 min (14:30)")
  * - gCO2e: Total emissions in grams CO₂ equivalent
+ * - co2Saved: CO₂ saved compared to driving solo (baseline - emissions), 0 if solo_car
  * - timeMin: Estimated trip duration
  * - costUSD: User-facing cost
  * - recommended: True only on lowest-emissions option (behavioral nudge)
@@ -71,6 +79,7 @@ interface ModeResult {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
@@ -89,6 +98,7 @@ interface ModeResult {
 /**
  * Helper: Calculate emissions for a single mode
  * Pure calculation: distance × emission_factor
+ * co2Saved = baseline - emissions (0 if solo_car)
  */
 function scoreMode(mode: string, distance: number): Omit<ModeResult, 'label' | 'recommended'> | null {
   const factor = EMISSION_FACTORS[mode as keyof typeof EMISSION_FACTORS];
@@ -101,7 +111,6 @@ function scoreMode(mode: string, distance: number): Omit<ModeResult, 'label' | '
     cat_bus: Math.round((distance / 12) * 60) + 8,
     connect_bus: Math.round((distance / 15) * 60) + 5,
     ebike: Math.round((distance / 12) * 60),
-    escooter: Math.round((distance / 10) * 60),
     bike: Math.round((distance / 10) * 60),
     walk: Math.round((distance / 3) * 60),
   };
@@ -113,16 +122,19 @@ function scoreMode(mode: string, distance: number): Omit<ModeResult, 'label' | '
     cat_bus: 0,
     connect_bus: 0,
     ebike: distance < 1 ? 1 : Math.round(1 + distance * 0.39),
-    escooter: distance < 1 ? 1 : Math.round(1 + distance * 0.39),
     bike: 0,
     walk: 0,
   };
 
   const gCO2e = Math.round(distance * factor);
+  const baselineEmissions = distance * BASELINE_EMISSIONS;
+  // solo_car always saves 0, others save baseline - emissions (clamped to 0)
+  const co2Saved = mode === 'solo_car' ? 0 : Math.max(0, Math.round(baselineEmissions - gCO2e));
 
   return {
     mode,
     gCO2e,
+    co2Saved,
     timeMin: timeEstimates[mode] || 0,
     costUSD: costEstimates[mode] || 0,
     color: getModeColor(gCO2e),

@@ -27,7 +27,6 @@ interface Stats {
 }
 
 const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
-const CAR_MODE = 'solo_car';
 
 function loadTrips(): TripLog[] {
   if (typeof window === 'undefined') return [];
@@ -54,16 +53,14 @@ function calculateStats(trips: TripLog[]): Stats {
     totalMiles += trip.distanceMiles;
     modeBreakdown[trip.mode] = (modeBreakdown[trip.mode] || 0) + 1;
     
-    if (trip.mode !== CAR_MODE) {
-      totalGSaved += trip.gCO2e;
-    }
+    // gCO2e now stores co2Saved (CO2 saved vs driving solo)
+    // solo_car trips have co2Saved = 0
+    totalGSaved += trip.gCO2e;
 
     const tripDate = new Date(trip.date);
     if (tripDate >= weekAgo) {
       weeklyTrips++;
-      if (trip.mode !== CAR_MODE) {
-        weeklyGSaved += trip.gCO2e;
-      }
+      weeklyGSaved += trip.gCO2e;
     }
   });
 

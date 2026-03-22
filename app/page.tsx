@@ -94,6 +94,7 @@ interface ModeScore {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
@@ -286,10 +287,10 @@ export default function GPSPage() {
       fetchDirections(mode.mode);
     }
   };
-  const handleLogTrip = async (mode: string, gCO2e: number) => {
+  const handleLogTrip = async (mode: string, co2Saved: number) => {
     const tripEntry = {
       mode,
-      gCO2e,
+      gCO2e: co2Saved,
       distanceMiles: distance,
       date: new Date().toISOString(),
     };
@@ -305,7 +306,7 @@ export default function GPSPage() {
       }
     }
 
-    console.log('Logged trip:', { mode, gCO2e, distance, trips: trips.length });
+    console.log('Logged trip:', { mode, co2Saved, distance, trips: trips.length });
   };
 
   const fetchDirections = (selectedMode: string) => {

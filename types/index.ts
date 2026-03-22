@@ -33,6 +33,9 @@ export interface ModeResult {
   /** Total emissions in grams CO₂ equivalent */
   gCO2e: number;
   
+  /** CO₂ saved compared to driving solo (baseline - emissions), 0 if solo_car */
+  co2Saved: number;
+  
   /** Estimated trip duration in minutes */
   timeMin: number;
   
