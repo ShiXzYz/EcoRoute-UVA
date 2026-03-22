@@ -64,9 +64,7 @@ function calculateStats(trips: TripLog[]): Stats {
     if (tripDate >= weekAgo) {
       weeklyTrips++;
       weeklyModeBreakdown[trip.mode] = (weeklyModeBreakdown[trip.mode] || 0) + 1;
-      if (trip.mode !== CAR_MODE) {
-        weeklyGSaved += trip.gCO2e;
-      }
+      weeklyGSaved += trip.gCO2e;
     }
   });
 
