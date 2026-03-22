@@ -23,6 +23,8 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
+import SlideUpPanel from '@/components/SlideUpPanel';
+import { getCachedDirections, setCachedDirections } from '@/lib/cache';
 
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
@@ -53,6 +55,12 @@ interface Location {
   lat: number;
   lng: number;
   name: string;
+  displayName?: string;
+}
+
+interface RouteData {
+  points: { lat: number; lng: number }[];
+  color?: string;
 }
 
 /**
@@ -88,9 +96,11 @@ export default function GPSPage() {
   // Search/location state
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
-  const [fromInput, setFromInput] = useState('');
-  const [toInput, setToInput] = useState('');
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(true);
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
+  const [route, setRoute] = useState<RouteData | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   // UI state
   const [panelOpen, setPanelOpen] = useState(false);
@@ -103,11 +113,9 @@ export default function GPSPage() {
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
-      setFromInput(location.name);
       setSelectedType('to');
     } else {
       setToLocation(location);
-      setToInput(location.name);
       setSelectedType(null);
     }
 
@@ -120,25 +128,21 @@ export default function GPSPage() {
     }
   };
 
-  /**
-   * Manually trigger search (in case user doesn't select auto suggestion)
-   */
-  const handleSearch = async () => {
-    if (fromLocation && toLocation) {
-      await fetchScores(fromLocation, toLocation);
-    }
+  const handleSelectedTypeChange = (type: 'from' | 'to' | null) => {
+    setSelectedType(type);
   };
 
-  /**
-   * Swap origin and destination
-   */
   const handleSwap = () => {
     const tempLocation = fromLocation;
-    const tempInput = fromInput;
     setFromLocation(toLocation);
     setToLocation(tempLocation);
-    setFromInput(toInput);
-    setToInput(tempInput);
+    if (fromLocation && toLocation) {
+      setSelectedType(null);
+    } else if (fromLocation) {
+      setSelectedType('to');
+    } else if (toLocation) {
+      setSelectedType('from');
+    }
   };
 
   /**
@@ -166,20 +170,12 @@ export default function GPSPage() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
       const data = await response.json();
-      
-      // Response is array sorted by gCO2e, first item has recommended: true
-      setScores(data);
-
-      // Auto-select the recommended option (lowest CO₂)
-      if (data.length > 0 && data[0].recommended) {
-        setSelectedMode(data[0].mode);
-        setSelectedModeData(data[0]);
-      }
+      setScores(data.scores);
+      setBaseline(data.baseline.solo_car_gco2e);
+      setDistance(distance_miles);
+      setSelectedMode(null); // Don't auto-select, let user choose
+      setRoute(null);
 
       setPanelOpen(true);
     } catch (error) {
@@ -237,6 +233,143 @@ export default function GPSPage() {
     }
   };
 
+  const fetchDirections = (selectedMode: string) => {
+    if (!fromLocation || !toLocation) return;
+
+    setRouteLoading(true);
+    setRoute(null); // Clear previous route while loading
+
+    // Delay to ensure Google Maps is fully loaded
+    const tryFetch = async () => {
+      // Wait a bit longer for Google Maps to be ready
+      if (typeof window.google === 'undefined' || !window.google.maps || !window.google.maps.DirectionsService) {
+        setTimeout(tryFetch, 200);
+        return;
+      }
+
+      // Check cache first
+      const cached = await getCachedDirections(
+        fromLocation.lat,
+        fromLocation.lng,
+        toLocation.lat,
+        toLocation.lng,
+        selectedMode
+      );
+
+      if (cached) {
+        // eslint-disable-next-line
+        const points = window.google.maps.geometry.encoding.decodePath(cached.polyline);
+        setRoute({
+          points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+          color: undefined,
+        });
+        setRouteLoading(false);
+        return;
+      }
+
+      try {
+        // eslint-disable-next-line
+        const maps = window.google.maps as any;
+        const modeToTravelMode: Record<string, string> = {
+          walking: 'WALKING',
+          bike: 'BICYCLING',
+          ebike: 'BICYCLING',
+          ev: 'DRIVING',
+          solo_car: 'DRIVING',
+          carpool_2: 'DRIVING',
+          carpool_3: 'DRIVING',
+          cat_bus: 'TRANSIT',
+          uts_bus: 'TRANSIT',
+          trolley: 'TRANSIT',
+        };
+
+        const travelMode = modeToTravelMode[selectedMode] || 'DRIVING';
+        const directionsService = new maps.DirectionsService();
+
+        directionsService.route(
+          {
+            origin: new maps.LatLng(fromLocation.lat, fromLocation.lng),
+            destination: new maps.LatLng(toLocation.lat, toLocation.lng),
+            travelMode: maps.TravelMode[travelMode],
+          },
+          async (result: any, status: string) => {
+            if (status === 'OK' && result && result.routes[0]) {
+              // eslint-disable-next-line
+              const polyline = result.routes[0].overview_polyline as any;
+              const path = polyline.getPath ? polyline.getPath() : polyline;
+              const points = maps.geometry.encoding.decodePath(path);
+
+              // Cache the result
+              await setCachedDirections(
+                fromLocation.lat,
+                fromLocation.lng,
+                toLocation.lat,
+                toLocation.lng,
+                selectedMode,
+                path,
+                result.routes[0].legs[0]?.distance?.value || 0,
+                result.routes[0].legs[0]?.duration?.value || 0
+              );
+
+              setRoute({
+                points: points.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+                color: undefined,
+              });
+            } else {
+              console.error('Directions failed:', status);
+              // Retry once after a delay
+              setTimeout(() => {
+                directionsService.route(
+                  {
+                    origin: new maps.LatLng(fromLocation.lat, fromLocation.lng),
+                    destination: new maps.LatLng(toLocation.lat, toLocation.lng),
+                    travelMode: maps.TravelMode[travelMode],
+                  },
+                  async (retryResult: any, retryStatus: string) => {
+                    if (retryStatus === 'OK' && retryResult && retryResult.routes[0]) {
+                      // eslint-disable-next-line
+                      const retryPolyline = retryResult.routes[0].overview_polyline as any;
+                      const retryPath = retryPolyline.getPath ? retryPolyline.getPath() : retryPolyline;
+                      const retryPoints = maps.geometry.encoding.decodePath(retryPath);
+
+                      await setCachedDirections(
+                        fromLocation.lat,
+                        fromLocation.lng,
+                        toLocation.lat,
+                        toLocation.lng,
+                        selectedMode,
+                        retryPath,
+                        retryResult.routes[0].legs[0]?.distance?.value || 0,
+                        retryResult.routes[0].legs[0]?.duration?.value || 0
+                      );
+
+                      setRoute({
+                        points: retryPoints.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+                        color: undefined,
+                      });
+                    }
+                    setRouteLoading(false);
+                  }
+                );
+              }, 500);
+            }
+            setRouteLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error('Error fetching directions:', error);
+        setRouteLoading(false);
+      }
+    };
+
+    setTimeout(tryFetch, 300);
+  };
+
+  const handleModeSelect = (mode: string) => {
+    setSelectedMode(mode);
+    fetchDirections(mode);
+  };
+
   return (
     <main className="relative h-screen w-screen overflow-hidden flex flex-col">
       {/* Full-screen map display */}
@@ -246,6 +379,9 @@ export default function GPSPage() {
           fromLocation={fromLocation}
           toLocation={toLocation}
           selectedType={selectedType}
+          route={route}
+          mode={selectedMode || undefined}
+          key={route ? `route-${selectedMode}` : 'no-route'}
         />
       </div>
 
@@ -255,29 +391,57 @@ export default function GPSPage() {
           fromLocation={fromLocation}
           toLocation={toLocation}
           selectedType={selectedType}
-          onSelectedTypeChange={(type) => setSelectedType(type)}
-          onFromChange={(e) => setFromInput(e.target.value)}
-          onToChange={(e) => setToInput(e.target.value)}
+          onSelectedTypeChange={handleSelectedTypeChange}
+          onLocationSelect={handleLocationSelect}
           onSwap={handleSwap}
-          onSearch={handleSearch}
         />
       </div>
 
-      {/* Bottom tab bar — GPS | Stats */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex">
-        <a
-          href="/"
-          className="flex-1 py-3 text-center font-semibold text-green-600 border-b-2 border-green-600"
-        >
-          📍 GPS
-        </a>
-        <a
-          href="/stats"
-          className="flex-1 py-3 text-center font-semibold text-slate-600"
-        >
-          📊 Stats
-        </a>
-      </nav>
+      {/* Streak Badge - Top Right */}
+      {streak > 0 && (
+        <div className="absolute top-4 right-2 sm:right-4" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-full shadow-lg px-3 py-2 flex items-center gap-2">
+            <span className="text-lg">🔥</span>
+            <span className="font-bold text-uva-primary text-sm">{streak}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Instructions - Bottom Left */}
+      {!fromLocation && !panelOpen && (
+        <div className="absolute bottom-8 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
+          <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3">
+            <p className="text-sm text-slate-700">
+              <span className="font-medium">Tip:</span> Search for a location or tap on the map.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Indicator */}
+      {loading && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-full shadow-lg px-6 py-4 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
+            <span className="text-slate-700 font-medium">Finding routes...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Slide Up Panel */}
+      <SlideUpPanel
+        modes={scores || []}
+        selectedMode={selectedMode}
+        baseline={baseline}
+        distance={distance}
+        isOpen={panelOpen}
+        isExpanded={panelExpanded}
+        onClose={() => setPanelOpen(false)}
+        onCollapse={() => setPanelExpanded(false)}
+        onExpand={() => setPanelExpanded(true)}
+        onSelect={handleModeSelect}
+        onLogTrip={handleLogTrip}
+      />
     </main>
   );
 }

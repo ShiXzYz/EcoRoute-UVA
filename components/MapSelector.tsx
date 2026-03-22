@@ -1,11 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useGoogleMaps } from '@/lib/GoogleMapsContext';
 
 interface Location {
   lat: number;
   lng: number;
   name: string;
+  displayName?: string;
+}
+
+interface RouteData {
+  points: { lat: number; lng: number }[];
+  color?: string;
 }
 
 interface MapSelectorProps {
@@ -13,138 +20,194 @@ interface MapSelectorProps {
   fromLocation: Location | null;
   toLocation: Location | null;
   selectedType: 'from' | 'to' | null;
+  route?: RouteData | null;
+  mode?: string;
 }
+
+const containerStyle = {
+  width: '100%',
+  height: '100%',
+};
+
+const center = {
+  lat: 38.0336,
+  lng: -78.5080,
+};
+
+const modeColors: Record<string, string> = {
+  walking: '#10B981',
+  bike: '#F59E0B',
+  ebike: '#8B5CF6',
+  solo_car: '#EF4444',
+  carpool_2: '#F97316',
+  carpool_3: '#F97316',
+  cat_bus: '#3B82F6',
+  uts_bus: '#3B82F6',
+  trolley: '#3B82F6',
+};
 
 export default function MapSelector({
   onLocationSelect,
   fromLocation,
   toLocation,
   selectedType,
+  route,
+  mode,
 }: MapSelectorProps) {
-  const mapRef = useRef<any>(null);
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const fromMarkerRef = useRef<any>(null);
-  const toMarkerRef = useRef<any>(null);
-  const routeLineRef = useRef<any>(null);
-  const [L, setL] = useState<any>(null);
+  const { isLoaded, loadError } = useGoogleMaps();
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  // eslint-disable-next-line
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+
+  const lastGeocodeTime = useRef<number>(0);
+  const GEOCODE_COOLDOWN = 1000;
+  const geocodeCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
-    import('leaflet').then((module) => {
-      setL(module.default);
-    });
-  }, []);
+    if (!isLoaded || mapInstanceRef.current || !mapRef.current) return;
 
-  useEffect(() => {
-    if (!mapContainerRef.current || !L) return;
-    if (mapRef.current) return;
-
-    const map = L.map(mapContainerRef.current, {
+    const map = new google.maps.Map(mapRef.current, {
+      center,
+      zoom: 14,
+      disableDefaultUI: false,
       zoomControl: true,
-      attributionControl: true,
-    }).setView([38.0336, -78.5080], 14);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
-
-    mapRef.current = map;
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-  }, [L]);
-
-  useEffect(() => {
-    if (!mapRef.current || !L) return;
-
-    const map = mapRef.current;
-    
-    const createIcon = (color: string) => L.divIcon({
-      html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>`,
-      className: 'custom-marker',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
-      popupAnchor: [0, -12],
+      mapId: '27ee17fe3338eb9aeeeff1a2',
     });
 
-    const fromIcon = createIcon('#00A3E0');
-    const toIcon = createIcon('#EF4444');
+    mapInstanceRef.current = map;
+    setMapReady(true);
 
-    const handleMapClick = (e: any) => {
-      const { lat, lng } = e.latlng;
-      const locationName = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      const location: Location = { lat, lng, name: locationName };
+    map.addListener('click', async (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
 
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
       const type = selectedType || (!fromLocation ? 'from' : 'to');
-      
-      if (type === 'from') {
-        if (fromMarkerRef.current) fromMarkerRef.current.remove();
-        fromMarkerRef.current = L.marker([lat, lng], { icon: fromIcon })
-          .bindPopup(`<strong>From:</strong> ${locationName}`)
-          .addTo(map);
-        onLocationSelect(location, 'from');
-      } else {
-        if (toMarkerRef.current) toMarkerRef.current.remove();
-        toMarkerRef.current = L.marker([lat, lng], { icon: toIcon })
-          .bindPopup(`<strong>To:</strong> ${locationName}`)
-          .addTo(map);
-        onLocationSelect(location, 'to');
 
-        if (fromMarkerRef.current) {
-          if (routeLineRef.current) {
-            routeLineRef.current.remove();
-          }
-          routeLineRef.current = L.polyline(
-            [
-              fromMarkerRef.current.getLatLng(),
-              toMarkerRef.current.getLatLng(),
-            ],
-            { color: '#00A3E0', weight: 4, opacity: 0.8, dashArray: '10, 10' }
-          ).addTo(map);
+      const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
 
-          const bounds = routeLineRef.current.getBounds();
-          map.fitBounds(bounds.pad(0.2));
-        }
+      if (geocodeCache.current.has(cacheKey)) {
+        const cachedName = geocodeCache.current.get(cacheKey)!;
+        onLocationSelect({ lat, lng, name: cachedName, displayName: cachedName }, type);
+        return;
       }
-    };
 
-    map.on('click', handleMapClick);
+      const now = Date.now();
+      if (now - lastGeocodeTime.current < GEOCODE_COOLDOWN) {
+        const name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        onLocationSelect({ lat, lng, name, displayName: name }, type);
+        return;
+      }
+      lastGeocodeTime.current = now;
+
+      try {
+        const response = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+        const data = await response.json();
+
+        let name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        if (data.results && data.results[0]) {
+          name = data.results[0].formatted_address;
+        }
+
+        geocodeCache.current.set(cacheKey, name);
+        if (geocodeCache.current.size > 100) {
+          const firstKey = geocodeCache.current.keys().next().value;
+          if (firstKey) geocodeCache.current.delete(firstKey);
+        }
+
+        onLocationSelect({ lat, lng, name, displayName: name }, type);
+      } catch (error) {
+        const name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        onLocationSelect({ lat, lng, name, displayName: name }, type);
+      }
+    });
 
     return () => {
-      map.off('click', handleMapClick);
+      if (mapInstanceRef.current) {
+        google.maps.event.clearInstanceListeners(mapInstanceRef.current);
+      }
     };
-  }, [L, fromLocation, toLocation, selectedType, onLocationSelect]);
+  }, [isLoaded, onLocationSelect, selectedType, fromLocation]);
 
-  // Update route line when markers change
   useEffect(() => {
-    if (!mapRef.current || !L) return;
-    if (!fromLocation || !toLocation) return;
-    
-    const map = mapRef.current;
-    
-    // Remove old line
-    if (routeLineRef.current) {
-      routeLineRef.current.remove();
+    if (!mapReady || !mapInstanceRef.current) return;
+
+    markersRef.current.forEach(marker => marker.setMap(null));
+    markersRef.current = [];
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
     }
-    
-    // Draw new line
-    routeLineRef.current = L.polyline(
-      [
-        [fromLocation.lat, fromLocation.lng],
-        [toLocation.lat, toLocation.lng],
-      ],
-      { color: '#00A3E0', weight: 4, opacity: 0.8, dashArray: '10, 10' }
-    ).addTo(map);
 
-    const bounds = routeLineRef.current.getBounds();
-    map.fitBounds(bounds.pad(0.2));
-  }, [L, fromLocation, toLocation]);
+    const map = mapInstanceRef.current;
 
-  return (
-    <div ref={mapContainerRef} className="w-full h-full" style={{ zIndex: 1 }} />
-  );
+    if (fromLocation) {
+      const fromMarker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: fromLocation.lat, lng: fromLocation.lng },
+        title: 'From: ' + fromLocation.name,
+      });
+      markersRef.current.push(fromMarker);
+    }
+
+    if (toLocation) {
+      const toMarker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: toLocation.lat, lng: toLocation.lng },
+        title: 'To: ' + toLocation.name,
+      });
+      markersRef.current.push(toMarker);
+    }
+
+    if (route?.points && route.points.length > 0) {
+      const routeColor = route.color || modeColors[mode || 'walking'] || '#00A3E0';
+      polylineRef.current = new google.maps.Polyline({
+        path: route.points,
+        strokeColor: routeColor,
+        strokeOpacity: 0.9,
+        strokeWeight: 5,
+        map,
+      });
+
+      const bounds = new google.maps.LatLngBounds();
+      route.points.forEach(point => bounds.extend(point));
+      map.fitBounds(bounds, 80);
+    } else if (fromLocation && toLocation) {
+      polylineRef.current = new google.maps.Polyline({
+        path: [
+          { lat: fromLocation.lat, lng: fromLocation.lng },
+          { lat: toLocation.lat, lng: toLocation.lng },
+        ],
+        strokeColor: '#00A3E0',
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        map,
+      });
+
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({ lat: fromLocation.lat, lng: fromLocation.lng });
+      bounds.extend({ lat: toLocation.lat, lng: toLocation.lng });
+      map.fitBounds(bounds, 50);
+    }
+  }, [mapReady, fromLocation, toLocation, route, mode]);
+
+  if (loadError) {
+    return (
+      <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+        <p className="text-slate-600">Error loading Google Maps</p>
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-uva-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return <div ref={mapRef} style={containerStyle} />;
 }
