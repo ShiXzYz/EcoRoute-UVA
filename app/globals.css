@@ -22,6 +22,8 @@ body {
 html {
   /* Support for dynamic viewport height on iOS */
   height: -webkit-fill-available;
+  /* Prevent rubber-banding on the page */
+  overscroll-behavior: none;
 }
 
 body {

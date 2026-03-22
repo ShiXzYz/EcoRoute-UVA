@@ -192,7 +192,13 @@ export default function StatsPage() {
         <p className="text-uva-accent text-sm">Track your environmental contribution</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-14 space-y-4">
+      <div 
+        className="flex-1 overflow-y-auto px-4 py-6 pb-20 space-y-4"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
+      >
         {/* Weekly Summary Card */}
         <div className="bg-white rounded-2xl shadow-md p-4">
           <h2 className="text-lg font-semibold text-slate-800 mb-3">This Week</h2>
@@ -354,7 +360,10 @@ export default function StatsPage() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around z-[90] h-14">
+      <nav 
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around z-[90] h-14"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <Link href="/" className="flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-uva-primary transition-colors">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />

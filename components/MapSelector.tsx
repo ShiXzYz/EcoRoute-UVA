@@ -87,7 +87,7 @@ export default function MapSelector({
       center,
       zoom: 14,
       disableDefaultUI: false,
-      zoomControl: true,
+      zoomControl: false,
       mapTypeControl: false,
       fullscreenControl: false,
       mapId: '27ee17fe3338eb9aeeeff1a2',
