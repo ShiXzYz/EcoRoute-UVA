@@ -363,10 +363,13 @@ export async function POST(req: Request) {
 
         for (const conn of connections) {
           const { minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
-          const originDist = originStopsInFeed.find(s => s.stop.id === conn.originStop.id)?.distanceMeters || 9999;
+          const originStopData = originStopsInFeed.find(s => s.stop.id === conn.originStop.id);
+          const originDist = originStopData?.distanceMeters || 9999;
+          const destStopData = destStopsInFeed.find(s => s.stop.id === conn.destStop.id);
+          const destDist = destStopData?.distanceMeters || 9999;
           
           // Score: lower is better (prioritize departure time, then walk distance)
-          const score = (minutesUntilDeparture || 999) * 100 + originDist;
+          const score = (minutesUntilDeparture || 999) * 100 + originDist + destDist;
           if (score < bestScore) {
             bestScore = score;
             bestConnection = conn;
@@ -375,6 +378,12 @@ export async function POST(req: Request) {
 
         const conn = bestConnection;
         const { nextTime, minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
+        
+        // Get actual distances for time calculation
+        const originStopData = originStopsInFeed.find(s => s.stop.id === conn.originStop.id);
+        const destStopData = destStopsInFeed.find(s => s.stop.id === conn.destStop.id);
+        const originWalkMeters = originStopData?.distanceMeters || 0;
+        const destWalkMeters = destStopData?.distanceMeters || 0;
 
         // Determine mode key based on feed name
         let modeKey = 'uts_bus';
@@ -398,15 +407,48 @@ export async function POST(req: Request) {
           .join(', ');
         const hasSchedule = nextTime !== null;
 
+        // Calculate actual transit time
+        const WALK_SPEED_M_PER_MIN = 80; // ~3 mph walking speed
+        const BUS_SPEED_M_PER_MIN = 267; // ~10 mph average bus speed (includes stops)
+        
+        // Walk time to origin stop (in minutes)
+        const walkToStop = Math.ceil(originWalkMeters / WALK_SPEED_M_PER_MIN);
+        // Walk time from destination stop (in minutes)
+        const walkFromStop = Math.ceil(destWalkMeters / WALK_SPEED_M_PER_MIN);
+        // Wait time for bus
+        const waitTime = minutesUntilDeparture || 0;
+        
+        // Calculate bus ride distance using shape points
+        const allShapePoints = conn.shapeId ? getShapePoints(feed, conn.shapeId) : [];
+        const clippedPoints = clipShapeToStops(allShapePoints, conn.originStop, conn.destStop);
+        
+        // Calculate bus ride time based on shape distance
+        let busRideTime = 0;
+        if (clippedPoints.length > 1) {
+          // Sum up distances between consecutive shape points
+          let totalBusDistMeters = 0;
+          for (let i = 1; i < clippedPoints.length; i++) {
+            totalBusDistMeters += haversineDistance(
+              clippedPoints[i-1].lat, clippedPoints[i-1].lng,
+              clippedPoints[i].lat, clippedPoints[i].lng
+            );
+          }
+          busRideTime = Math.ceil(totalBusDistMeters / BUS_SPEED_M_PER_MIN);
+        } else {
+          // Fallback: estimate bus ride as remaining distance at bus speed
+          const busDistMeters = (distance_miles * 1609.34) - originWalkMeters - destWalkMeters;
+          busRideTime = Math.ceil(Math.max(0, busDistMeters) / BUS_SPEED_M_PER_MIN);
+        }
+        
+        // Total transit time
+        const totalTransitTime = Math.max(1, walkToStop + waitTime + busRideTime + walkFromStop);
+
         const score = scoreMode(modeKey, distance_miles);
         if (score) {
-          // Get shape points for polyline (clip to origin/dest stops)
-          const allShapePoints = conn.shapeId ? getShapePoints(feed, conn.shapeId) : [];
-          const clippedPoints = clipShapeToStops(allShapePoints, conn.originStop, conn.destStop);
-
           modes.push({
             ...score,
             mode: modeKey,
+            timeMin: totalTransitTime, // Override with calculated time
             label: `${agencyName}${routeNames ? ` (${routeNames})` : ''} — ${hasSchedule ? `Departs ${minutesUntilDeparture} min (${nextTime})` : 'Check schedule'}`,
             recommended: false,
             transitStops: {
