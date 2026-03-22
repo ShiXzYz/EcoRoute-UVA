@@ -63,6 +63,7 @@ export default function ModeCards({
             key={mode.mode}
             mode={mode}
             isSelected={selectedMode === mode.mode}
+            baseline={baseline}
             onSelect={() => handleModeSelect(mode)}
             onLogTrip={() => onLogTrip(mode.mode, mode.gCO2e)}
           />
