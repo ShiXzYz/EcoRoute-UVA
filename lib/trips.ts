@@ -8,6 +8,13 @@ export interface TripLog {
   synced?: boolean;
 }
 
+interface SupabaseTripRow {
+  mode: string;
+  g_co2e: number;
+  distance_miles: number;
+  created_at: string;
+}
+
 const TRIPS_KEY = 'ecoroute_trips';
 
 export function loadTrips(): TripLog[] {
@@ -78,7 +85,7 @@ export async function loadTripsFromSupabase(userId: string): Promise<TripLog[]> 
       return [];
     }
 
-    return data.map(row => ({
+    return data.map((row: SupabaseTripRow) => ({
       mode: row.mode,
       gCO2e: row.g_co2e,
       distanceMiles: row.distance_miles,

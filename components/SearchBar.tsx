@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGoogleMaps } from '@/lib/GoogleMapsContext';
 
 interface Location {
@@ -8,6 +8,43 @@ interface Location {
   lng: number;
   name: string;
   displayName?: string;
+}
+
+interface CachedPlace {
+  description: string;
+  placeId: string;
+  location: Location;
+  timestamp?: number;
+}
+
+const CACHE_KEY = 'ecoroute_place_cache';
+const CACHE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function getPlaceCache(): Record<string, CachedPlace> {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (!cached) return {};
+    const data = JSON.parse(cached);
+    const now = Date.now();
+    const filtered: Record<string, CachedPlace> = {};
+    for (const [key, value] of Object.entries(data)) {
+      const entry = value as CachedPlace & { timestamp: number };
+      if (now - entry.timestamp < CACHE_TTL) {
+        filtered[key] = entry;
+      }
+    }
+    return filtered;
+  } catch {
+    return {};
+  }
+}
+
+function savePlaceToCache(key: string, place: CachedPlace) {
+  try {
+    const cache = getPlaceCache();
+    cache[key] = { ...place, timestamp: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
 }
 
 interface SearchBarProps {
@@ -44,8 +81,15 @@ export default function SearchBar({
     onSelectedTypeChangeRef.current = onSelectedTypeChange;
   });
 
+  // Track if autocomplete has been initialized
+  const initializedRef = useRef(false);
+
   useEffect(() => {
     if (!isLoaded || !inputFromRef.current || !inputToRef.current) return;
+    
+    // Prevent re-initialization on re-renders
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
     const bounds = new google.maps.LatLngBounds(
       { lat: 37.7, lng: -79.0 },
@@ -71,6 +115,20 @@ export default function SearchBar({
           name: place.name || place.formatted_address || 'From location',
           displayName: place.formatted_address,
         };
+        // Cache the selected place
+        const cacheKey = `from_${place.place_id}`;
+        savePlaceToCache(cacheKey, {
+          description: place.formatted_address || place.name || '',
+          placeId: place.place_id,
+          location,
+        });
+        // Cache by address too
+        const addressKey = `addr_${(place.formatted_address || '').toLowerCase().replace(/\s+/g, '_').substring(0, 50)}`;
+        savePlaceToCache(addressKey, {
+          description: place.formatted_address || place.name || '',
+          placeId: place.place_id,
+          location,
+        });
         onLocationSelectRef.current(location, 'from');
         onSelectedTypeChangeRef.current('to');
       }
@@ -85,6 +143,20 @@ export default function SearchBar({
           name: place.name || place.formatted_address || 'To location',
           displayName: place.formatted_address,
         };
+        // Cache the selected place
+        const cacheKey = `to_${place.place_id}`;
+        savePlaceToCache(cacheKey, {
+          description: place.formatted_address || place.name || '',
+          placeId: place.place_id,
+          location,
+        });
+        // Cache by address too
+        const addressKey = `addr_${(place.formatted_address || '').toLowerCase().replace(/\s+/g, '_').substring(0, 50)}`;
+        savePlaceToCache(addressKey, {
+          description: place.formatted_address || place.name || '',
+          placeId: place.place_id,
+          location,
+        });
         onLocationSelectRef.current(location, 'to');
         onSelectedTypeChangeRef.current(null);
       }
@@ -159,7 +231,7 @@ export default function SearchBar({
             defaultValue={fromLocation?.displayName || ''}
             className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
               selectedType === 'from' 
-                ? 'border-uva-accent bg-blue-50' 
+                ? 'border-uva-accent bg-uva-accent/10' 
                 : 'border-slate-200 bg-white'
             }`}
             onFocus={() => onSelectedTypeChange('from')}
@@ -171,7 +243,7 @@ export default function SearchBar({
             defaultValue={toLocation?.displayName || ''}
             className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
               selectedType === 'to' 
-                ? 'border-eco-red bg-red-50' 
+                ? 'border-eco-red bg-eco-red/10' 
                 : 'border-slate-200 bg-white'
             }`}
             onFocus={() => onSelectedTypeChange('to')}

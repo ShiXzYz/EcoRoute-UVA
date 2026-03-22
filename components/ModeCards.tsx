@@ -6,6 +6,7 @@ interface ModeScore {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
@@ -20,7 +21,7 @@ interface ModeCardsProps {
   baseline: number;
   distance: number;
   onSelect: (mode: string) => void;
-  onLogTrip: (mode: string, gCO2e: number) => void;
+  onLogTrip: (mode: string, co2Saved: number) => void;
 }
 
 export default function ModeCards({
@@ -35,7 +36,8 @@ export default function ModeCards({
     onSelect(mode.mode);
   };
 
-  const savings = baseline - (selectedMode ? modes.find(m => m.mode === selectedMode)?.gCO2e || 0 : 0);
+  const selectedModeData = selectedMode ? modes.find(m => m.mode === selectedMode) : null;
+  const savings = selectedModeData?.co2Saved || 0;
   const savingsPercent = selectedMode && baseline > 0 
     ? Math.round((savings / baseline) * 100) 
     : 0;
@@ -64,8 +66,9 @@ export default function ModeCards({
             mode={mode}
             isSelected={selectedMode === mode.mode}
             baseline={baseline}
+            isWorst={mode.mode === 'solo_car'}
             onSelect={() => handleModeSelect(mode)}
-            onLogTrip={() => onLogTrip(mode.mode, mode.gCO2e)}
+            onLogTrip={() => onLogTrip(mode.mode, mode.co2Saved)}
           />
         ))}
       </div>

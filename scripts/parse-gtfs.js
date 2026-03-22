@@ -1,16 +1,33 @@
 #!/usr/bin/env node
 /**
  * GTFS Parser Script
- * Parse UVA and CAT GTFS feeds into JSON for ultra-fast runtime lookup
- * Run once before hackathon: node scripts/parse-gtfs.js
+ * Parse UVA, CAT, and JAUNT GTFS feeds into JSON for ultra-fast runtime lookup
+ * Run once before development/deployment: npm run parse-gtfs
+ * 
+ * Parses:
+ * - stops.txt → Stop locations and names
+ * - routes.txt → Route definitions (bus lines)
+ * - stop_times.txt → Departure times at each stop
+ * - trips.txt → Trip service IDs (for filtering by day)
+ * - calendar.txt → Service calendar (which days each service runs)
  */
 
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { createReadStream } = require('fs');
+const { createReadStream, existsSync, mkdirSync, writeFileSync } = require('fs');
+const { promisify } = require('util');
+const exec = promisify(require('child_process').exec);
 
+/**
+ * Parse a CSV file into an array of objects
+ */
 async function parseCSV(filePath) {
+  if (!existsSync(filePath)) {
+    console.warn(`⚠️  File not found: ${filePath}`);
+    return { headers: [], data: [] };
+  }
+
   const lines = [];
   const rl = readline.createInterface({
     input: createReadStream(filePath),
@@ -22,13 +39,14 @@ async function parseCSV(filePath) {
 
   for await (const line of rl) {
     if (isHeader) {
-      headers = line.split(',').map(h => h.trim());
+      headers = line.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
       isHeader = false;
     } else {
-      const values = line.split(',');
+      // Handle quoted CSV values
+      const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
       const obj = {};
       headers.forEach((header, idx) => {
-        obj[header] = values[idx]?.trim() || '';
+        obj[header] = values[idx] || '';
       });
       lines.push(obj);
     }
@@ -37,96 +55,321 @@ async function parseCSV(filePath) {
   return { headers, data: lines };
 }
 
-async function parseGTFS(zipPath, name) {
-  console.log(`\n📦 Parsing ${name} GTFS...`);
+/**
+ * Extract ZIP file and return temporary directory path
+ */
+async function extractZip(zipPath, tempDir) {
+  console.log(`   📂 Extracting ${path.basename(zipPath)}...`);
   
-  // In production, you'd unzip and parse properly
-  // For now, this is a template showing the structure
+  // Create temp directory
+  mkdirSync(tempDir, { recursive: true });
   
-  const gtfsData = {
-    name,
-    stops: [
-      // Parsed from stops.txt
-      {
-        id: 'stop_example',
-        name: 'Example Stop',
-        lat: 38.0336,
-        lon: -78.5080,
-        desc: 'Example description',
-      },
-    ],
-    routes: [
-      // Parsed from routes.txt
-      {
-        id: 'route_example',
-        short_name: 'Route 1',
-        long_name: 'Route One',
-        type: 3, // Bus
-        color: 'FF6B35',
-      },
-    ],
-    trips: [
-      // Parsed from trips.txt - link routes to stop sequences
-      {
-        route_id: 'route_example',
-        trip_id: 'trip_example',
-        stop_sequence: [
-          { stop_id: 'stop_1', arrival_time: '08:00:00', departure_time: '08:00:00' },
-          { stop_id: 'stop_2', arrival_time: '08:10:00', departure_time: '08:10:00' },
-        ],
-      },
-    ],
-  };
-
-  return gtfsData;
+  try {
+    // Use unzip command (cross-platform with Node.js)
+    await exec(`cd "${tempDir}" && unzip -q "${zipPath}"`);
+    return tempDir;
+  } catch (err) {
+    // Fallback: Try with 7-zip or other tools if unzip not available
+    console.warn(`   ⚠️  Could not unzip with native unzip. Trying alternative...`);
+    try {
+      await exec(`cd "${tempDir}" && powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '.'"`);
+      return tempDir;
+    } catch (err2) {
+      throw new Error(`Failed to extract ZIP: ${zipPath} - Ensure 'unzip' or PowerShell is available`);
+    }
+  }
 }
 
+/**
+ * Main GTFS parsing function
+ */
+async function parseGTFS(zipPath, feedName, outputName) {
+  console.log(`\n📦 Parsing ${feedName}...`);
+  
+  const tempDir = path.join(__dirname, `.temp-${outputName}`);
+  
+  try {
+    // Extract ZIP
+    await extractZip(zipPath, tempDir);
+
+    // Parse GTFS files
+    console.log('   📋 Parsing stops.txt...');
+    const stopsResult = await parseCSV(path.join(tempDir, 'stops.txt'));
+    const stops = stopsResult.data.map(s => ({
+      id: s.stop_id,
+      name: s.stop_name,
+      lat: parseFloat(s.stop_lat),
+      lon: parseFloat(s.stop_lon),
+      desc: s.stop_desc || '',
+    }));
+
+    console.log('   📋 Parsing routes.txt...');
+    const routesResult = await parseCSV(path.join(tempDir, 'routes.txt'));
+    const routes = routesResult.data.map(r => ({
+      id: r.route_id,
+      short_name: r.route_short_name || r.route_id,
+      long_name: r.route_long_name || '',
+      type: parseInt(r.route_type) || 3,
+      color: r.route_color || 'FF6B35',
+    }));
+
+    // Build route lookup
+    const routeById = {};
+    routes.forEach(r => { routeById[r.id] = r; });
+
+    console.log('   📋 Parsing trips.txt...');
+    const tripsResult = await parseCSV(path.join(tempDir, 'trips.txt'));
+    const tripsByRoute = {};
+    const tripById = {};
+    tripsResult.data.forEach(t => {
+      if (!tripsByRoute[t.route_id]) tripsByRoute[t.route_id] = [];
+      tripsByRoute[t.route_id].push({
+        id: t.trip_id,
+        serviceId: t.service_id,
+        routeId: t.route_id,
+        shapeId: t.shape_id || null,
+      });
+      tripById[t.trip_id] = {
+        id: t.trip_id,
+        serviceId: t.service_id,
+        routeId: t.route_id,
+        shapeId: t.shape_id || null,
+      };
+    });
+
+    console.log('   📋 Parsing calendar.txt...');
+    const calendarResult = await parseCSV(path.join(tempDir, 'calendar.txt'));
+    const serviceById = {};
+    calendarResult.data.forEach(c => {
+      serviceById[c.service_id] = {
+        monday: c.monday === '1',
+        tuesday: c.tuesday === '1',
+        wednesday: c.wednesday === '1',
+        thursday: c.thursday === '1',
+        friday: c.friday === '1',
+        saturday: c.saturday === '1',
+        sunday: c.sunday === '1',
+      };
+    });
+
+    console.log('   📋 Parsing stop_times.txt...');
+    const stopTimesResult = await parseCSV(path.join(tempDir, 'stop_times.txt'));
+    
+    // Build departures lookup: stop_id -> day -> [times]
+    const departures = {};
+    stops.forEach(s => {
+      departures[s.id] = {
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+        sunday: [],
+      };
+    });
+
+    // Process stop times
+    stopTimesResult.data.forEach(st => {
+      const tripId = st.trip_id;
+      const stopId = st.stop_id;
+      const arrivalTime = st.arrival_time;
+
+      // Find trip and its service
+      const trip = tripsResult.data.find(t => t.trip_id === tripId);
+      if (!trip) return;
+
+      const service = serviceById[trip.service_id];
+      if (!service) return;
+
+      // Add departure time to each service day
+      const timeStr = normalizeTime(arrivalTime);
+      ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+        if (service[day] && departures[stopId]) {
+          if (!departures[stopId][day].includes(timeStr)) {
+            departures[stopId][day].push(timeStr);
+          }
+        }
+      });
+    });
+
+    // Sort departure times for each stop/day
+    Object.values(departures).forEach(dayDepartures => {
+      Object.values(dayDepartures).forEach(times => {
+        times.sort();
+      });
+    });
+
+    // Build stop_routes lookup
+    const stopRoutes = {};
+    stops.forEach(s => { stopRoutes[s.id] = []; });
+    
+    stopTimesResult.data.forEach(st => {
+      const trip = tripsResult.data.find(t => t.trip_id === st.trip_id);
+      if (trip && !stopRoutes[st.stop_id].includes(trip.route_id)) {
+        stopRoutes[st.stop_id].push(trip.route_id);
+      }
+    });
+
+    // Parse shapes.txt for route polylines
+    console.log('   📋 Parsing shapes.txt...');
+    const shapes = {};
+    try {
+      const shapesResult = await parseCSV(path.join(tempDir, 'shapes.txt'));
+      shapesResult.data.forEach(row => {
+        if (!shapes[row.shape_id]) shapes[row.shape_id] = [];
+        shapes[row.shape_id].push({
+          lat: parseFloat(row.shape_pt_lat),
+          lng: parseFloat(row.shape_pt_lon),
+          seq: parseInt(row.shape_pt_sequence) || 0,
+        });
+      });
+      // Sort each shape by sequence
+      for (const id in shapes) {
+        shapes[id].sort((a, b) => a.seq - b.seq);
+      }
+    } catch (err) {
+      console.log('   ⚠️  shapes.txt not found or empty, skipping polylines');
+    }
+
+    // Build shape lookup by route (pick first trip's shape)
+    const routeShapeIds = {};
+    tripsResult.data.forEach(t => {
+      if (t.shape_id && !routeShapeIds[t.route_id]) {
+        routeShapeIds[t.route_id] = t.shape_id;
+      }
+    });
+
+    // Build final output
+    const gtfsData = {
+      agency: feedName,
+      generatedAt: new Date().toISOString(),
+      stops,
+      routes,
+      departures,
+      stop_routes: stopRoutes,
+      shapes,  // Full shape polylines
+      route_shape_ids: routeShapeIds,  // Route ID -> Shape ID lookup
+    };
+
+    // Clean up temp directory
+    const rimraf = promisify(require('child_process').exec);
+    await rimraf(`rmdir /s /q "${tempDir}"`, { shell: true }).catch(() => {});
+
+    console.log(`   ✅ Parsed: ${stops.length} stops, ${routes.length} routes`);
+    return gtfsData;
+  } catch (error) {
+    console.error(`   ❌ Error parsing ${feedName}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Normalize GTFS time format (handles post-midnight times like "25:15")
+ */
+function normalizeTime(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  if (h >= 24) {
+    return `${String(h - 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Clean up temporary directory
+ */
+function cleanupTemp(tempDir) {
+  try {
+    if (existsSync(tempDir)) {
+      const files = fs.readdirSync(tempDir);
+      files.forEach(file => {
+        const filePath = path.join(tempDir, file);
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+          cleanupTemp(filePath);
+        } else {
+          fs.unlinkSync(filePath);
+        }
+      });
+      fs.rmdirSync(tempDir);
+    }
+  } catch (err) {
+    // Silently ignore cleanup errors
+  }
+}
+
+/**
+ * Main entry point
+ */
 async function main() {
   console.log('🌱 EcoRoute GTFS Parser');
   console.log('=======================\n');
 
   try {
-    // Parse UVA GTFS
-    const uvaData = await parseGTFS(
-      './data/uva-gtfs.zip',
-      'UVA Transit'
-    );
+    // Ensure output directory exists
+    const outputDir = path.join(__dirname, '../data/gtfs-parsed');
+    mkdirSync(outputDir, { recursive: true });
 
-    // Parse CAT GTFS
-    const catData = await parseGTFS(
-      './data/cat-gtfs.zip',
-      'Charlottesville Area Transit'
-    );
+    // Define GTFS feeds to parse
+    const feeds = [
+      {
+        zip: path.join(__dirname, '../data/gtfs-raw/University_Transit_Service_GTFS.zip'),
+        name: 'UVA Transit Service',
+        output: 'uva-gtfs.json',
+      },
+      {
+        zip: path.join(__dirname, '../data/gtfs-raw/Charlottesville_Area_Transit_GTFS.zip'),
+        name: 'Charlottesville Area Transit (CAT)',
+        output: 'cat-gtfs.json',
+      },
+      {
+        zip: path.join(__dirname, '../data/gtfs-raw/Jaunt_Connect_Charlottesville_GTFS.zip'),
+        name: 'JAUNT/CONNECT',
+        output: 'jaunt-gtfs.json',
+      },
+    ];
 
-    // Combine into single lookup structure
-    const combined = {
-      generatedAt: new Date().toISOString(),
-      agencies: [uvaData, catData],
-      stopById: {},
-      routeById: {},
-    };
+    // Parse each feed
+    const results = [];
+    const tempDirs = [];
+    
+    for (const feed of feeds) {
+      try {
+        if (!existsSync(feed.zip)) {
+          console.warn(`⚠️  ZIP not found: ${feed.zip}`);
+          continue;
+        }
 
-    // Index for fast lookup
-    [uvaData, catData].forEach(agency => {
-      agency.stops.forEach(stop => {
-        combined.stopById[stop.id] = { ...stop, agency: agency.name };
-      });
-      agency.routes.forEach(route => {
-        combined.routeById[route.id] = { ...route, agency: agency.name };
-      });
+        const tempDir = path.join(__dirname, `.temp-${feed.output.replace('.json', '')}`);
+        tempDirs.push(tempDir);
+        
+        const data = await parseGTFS(feed.zip, feed.name, feed.output);
+        
+        // Save to JSON
+        const outputPath = path.join(outputDir, feed.output);
+        writeFileSync(outputPath, JSON.stringify(data, null, 2));
+        
+        console.log(`   ✨ Saved to: ${feed.output}`);
+        results.push({ name: feed.name, stops: data.stops.length, routes: data.routes.length });
+      } catch (err) {
+        console.error(`   ❌ Failed to process ${feed.name}:`, err.message);
+      }
+    }
+
+    // Clean up temp directories
+    tempDirs.forEach(tempDir => cleanupTemp(tempDir));
+
+    // Print summary
+    console.log('\n✅ GTFS parsing complete!');
+    console.log('=======================');
+    results.forEach(r => {
+      console.log(`${r.name}`);
+      console.log(`  • ${r.stops} stops`);
+      console.log(`  • ${r.routes} routes`);
     });
-
-    // Save to data directory
-    const outputPath = path.join(__dirname, '../data/gtfs-combined.json');
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify(combined, null, 2));
-
-    console.log('✅ GTFS parsing complete!');
-    console.log(`   UVA: ${uvaData.stops.length} stops, ${uvaData.routes.length} routes`);
-    console.log(`   CAT: ${catData.stops.length} stops, ${catData.routes.length} routes`);
-    console.log(`   Written to: ${outputPath}`);
+    console.log(`\nAll files saved to: ${outputDir}`);
   } catch (error) {
-    console.error('❌ Parsing error:', error.message);
+    console.error('❌ Fatal error:', error.message);
     process.exit(1);
   }
 }

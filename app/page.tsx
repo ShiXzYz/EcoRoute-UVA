@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * GPS Page — Primary EcoRoute interaction surface
+ * 
+ * Users:
+ * 1. Enter origin + destination via Google Places Autocomplete (SearchBar)
+ * 2. Map displays:
+ *    - Blue pin: origin
+ *    - Green pin: destination
+ *    - Orange pins: nearest bus stops (from GTFS data)
+ * 3. Select from ranked transport options (car, bike, bus, walk)
+ * 4. Map updates with polyline (car/bike/walk) or stop markers (transit)
+ * 5. Log trip: "I took this route today" → streak updates
+ * 
+ * Architecture:
+ * - /api/score: Calculate & rank all modes (POST)
+ * - MapSelector: Google Maps display
+ * - SlideUpPanel: Pullable bottom sheet with mode cards
+ * - SearchBar: Google Places Autocomplete input
+ */
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -10,7 +29,7 @@ import { useAuth } from '@/lib/auth';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
 import { addTrip, saveTripToSupabase, loadTrips } from '@/lib/trips';
 
-const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
+const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk'];
 
 function calculateCurrentStreak(trips: any[]): number {
   const greenTrips = trips.filter(t => GREEN_MODES.includes(t.mode));
@@ -47,17 +66,49 @@ function calculateCurrentStreak(trips: any[]): number {
   return streak;
 }
 
+declare global {
+  interface Window {
+    google: {
+      maps: {
+        DirectionsService: any;
+        DirectionsRenderer: any;
+        LatLng: any;
+        TravelMode: any;
+        geometry: {
+          encoding: {
+            decodePath: (path: any) => any;
+          };
+        };
+      };
+    };
+  }
+}
+
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
+/**
+ * ModeScore extended with transit fields
+ * See API_DOCS.md for full reference
+ */
 interface ModeScore {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
   icon: string;
   color: string;
+  polyline?: string;                           // Google Maps encoded polyline
+  bikeWarning?: boolean;
+  transitStops?: {                             // GTFS stop markers
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
+  };
+  shapePoints?: { lat: number; lng: number }[];
+  nextDepartureTime?: string;                  // "HH:MM"
+  minutesUntilDeparture?: number;
 }
 
 interface Location {
@@ -72,6 +123,11 @@ interface RouteData {
   color?: string;
 }
 
+/**
+ * Haversine distance calculation (miles)
+ * Used client-side for rough distance estimation
+ * Server calls Google Directions API for authoritative distance
+ */
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3959;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -86,12 +142,19 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 }
 
-export default function Home() {
+export default function GPSPage() {
+  // Trip state
   const [scores, setScores] = useState<ModeScore[] | null>(null);
-  const [baseline, setBaseline] = useState<number>(0);
   const [distance, setDistance] = useState<number>(0);
+  const [baseline, setBaseline] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [selectedModeData, setSelectedModeData] = useState<ModeScore | null>(null);
+
+  // Streak state (from localStorage or Supabase)
+  const [streak, setStreak] = useState<number>(0);
+
+  // Search/location state
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -102,12 +165,62 @@ export default function Home() {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [tripCount, setTripCount] = useState(0);
+  const [showTripLogged, setShowTripLogged] = useState(false);
+  const [loggedTripInfo, setLoggedTripInfo] = useState<{mode: string; co2Saved: number} | null>(null);
   const { user } = useAuth();
 
+  const SESSION_KEY = 'ecoroute_session';
+
+  // Save session to localStorage
+  const saveSession = useCallback(() => {
+    if (fromLocation || toLocation || scores) {
+      const session = {
+        fromLocation,
+        toLocation,
+        scores,
+        distance,
+        baseline,
+        selectedMode,
+        route,
+        panelOpen,
+        panelExpanded,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+  }, [fromLocation, toLocation, scores, distance, baseline, selectedMode, route, panelOpen, panelExpanded]);
+
+  // Restore session from localStorage
   useEffect(() => {
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+      try {
+        const session = JSON.parse(saved);
+        // Only restore if saved within last 5 minutes
+        if (Date.now() - session.savedAt < 5 * 60 * 1000) {
+          if (session.fromLocation) setFromLocation(session.fromLocation);
+          if (session.toLocation) setToLocation(session.toLocation);
+          if (session.scores) setScores(session.scores);
+          if (session.distance) setDistance(session.distance);
+          if (session.baseline) setBaseline(session.baseline);
+          if (session.selectedMode) setSelectedMode(session.selectedMode);
+          if (session.route) setRoute(session.route);
+          if (session.panelOpen !== undefined) setPanelOpen(session.panelOpen);
+          if (session.panelExpanded !== undefined) setPanelExpanded(session.panelExpanded);
+        }
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+      }
+    }
     const trips = loadTrips();
     setTripCount(trips.length);
   }, []);
+
+  // Auto-save session when state changes
+  useEffect(() => {
+    const timer = setTimeout(saveSession, 500);
+    return () => clearTimeout(timer);
+  }, [saveSession]);
 
   useEffect(() => {
     const handleStorage = () => {
@@ -125,6 +238,10 @@ export default function Home() {
     };
   }, []);
 
+  /**
+   * Handle location selection from Google Places Autocomplete
+   * Once both origin and destination are selected, call /api/score
+   */
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
       setFromLocation(location);
@@ -158,31 +275,60 @@ export default function Home() {
     } else if (toLocation) {
       setSelectedType('from');
     }
+    // Clear session on swap
+    localStorage.removeItem(SESSION_KEY);
   };
 
+  // Clear session and reset state
+  const clearSession = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setFromLocation(null);
+    setToLocation(null);
+    setScores(null);
+    setDistance(0);
+    setBaseline(0);
+    setSelectedMode(null);
+    setSelectedModeData(null);
+    setRoute(null);
+    setPanelOpen(false);
+    setPanelExpanded(true);
+    setSelectedType('from');
+  };
+
+  /**
+   * Call /api/score to get ranked transportation modes
+   * Response includes polylines, transit stops, and next departure times
+   */
   const fetchScores = async (from: Location, to: Location) => {
     setLoading(true);
     setSelectedMode(null);
+    setScores(null);
+    setBaseline(0);
 
     try {
+      // Client-side distance (rough estimate for UI)
       const distance_miles = calculateDistance(from.lat, from.lng, to.lat, to.lng);
+      setDistance(distance_miles);
 
+      // Call server endpoint
       const response = await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: from.name,
-          destination: to.name,
-          distance_miles,
-          persona: 'Student',
-          weather: {
-            rain_probability: 10,
-            wind_speed: 8,
-          },
+          originLat: from.lat,
+          originLon: from.lng,
+          destinationLat: to.lat,
+          destinationLon: to.lng,
+          distance_miles,  // Passed for reference; server calls Google Directions for truth
         }),
       });
 
       const data = await response.json();
+      
+      if (!response.ok || !data.scores || !data.baseline) {
+        throw new Error(data.error || 'Invalid API response');
+      }
+      
       setScores(data.scores);
       setBaseline(data.baseline.solo_car_gco2e);
       setDistance(distance_miles);
@@ -193,15 +339,32 @@ export default function Home() {
       setPanelExpanded(true); // Always expand when panel opens
     } catch (error) {
       console.error('Error scoring trip:', error);
+      alert('Failed to calculate routes. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogTrip = async (mode: string, gCO2e: number) => {
+  /**
+   * Handle mode selection from card
+   * Updates map with polyline or transit stop markers
+   */
+  const handleModeSelect = (mode: ModeScore) => {
+    setSelectedMode(mode.mode);
+    setSelectedModeData(mode);
+    
+    // Only fetch directions for non-transit modes (car, bike, walk, ebike, escooter)
+    // Transit modes already have stop markers from GTFS in the mode data
+    const transitModes = ['uts_bus', 'cat_bus', 'connect_bus'];
+    const isTransitMode = transitModes.some(t => mode.mode.startsWith(t));
+    if (!isTransitMode) {
+      fetchDirections(mode.mode);
+    }
+  };
+  const handleLogTrip = async (mode: string, co2Saved: number) => {
     const tripEntry = {
       mode,
-      gCO2e,
+      gCO2e: co2Saved,
       distanceMiles: distance,
       date: new Date().toISOString(),
     };
@@ -217,7 +380,15 @@ export default function Home() {
       }
     }
 
-    console.log('Logged trip:', { mode, gCO2e, distance, trips: trips.length });
+    // Collapse panel after logging
+    setPanelExpanded(false);
+
+    // Show trip logged popup
+    setLoggedTripInfo({ mode, co2Saved });
+    setShowTripLogged(true);
+    setTimeout(() => setShowTripLogged(false), 2500);
+
+    console.log('Logged trip:', { mode, co2Saved, distance, trips: trips.length });
   };
 
   const fetchDirections = (selectedMode: string) => {
@@ -352,17 +523,12 @@ export default function Home() {
     setTimeout(tryFetch, 300);
   };
 
-  const handleModeSelect = (mode: string) => {
-    setSelectedMode(mode);
-    fetchDirections(mode);
-  };
-
   return (
     <main className="relative h-screen w-screen overflow-hidden">
-      {/* Full Screen Map - with top and bottom padding */}
+      {/* Full Screen Map - Locked between top and bottom bars */}
       <div 
-        className="absolute left-0 right-0 bottom-0" 
-        style={{ zIndex: 1, top: '56px', bottom: '64px' }}
+        className="absolute inset-x-0" 
+        style={{ zIndex: 1, top: '56px', bottom: '56px' }}
         onClick={() => {
           if (panelOpen && panelExpanded) {
             setPanelExpanded(false);
@@ -376,15 +542,20 @@ export default function Home() {
           selectedType={selectedType}
           route={route}
           mode={selectedMode || undefined}
+          transitStops={selectedModeData?.transitStops ? {
+            ...selectedModeData.transitStops,
+            shapePoints: selectedModeData.shapePoints,
+          } : undefined}
           mapType={mapType}
           onMapTypeChange={setMapType}
           key={route ? `route-${selectedMode}` : 'no-route'}
         />
       </div>
 
-      {/* Top Bar - Logo Centered */}
+      {/* Top Bar - Logo Left */}
       <div 
         className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-between px-4 z-[100]"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Logo & App Name - Left */}
         <div className="flex items-center gap-2">
@@ -397,17 +568,28 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Account Button - Right */}
-        <button
-          onClick={() => setShowAuthModal(true)}
-          className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-        >
-          {user ? (
-            <span className="text-lg">👤</span>
-          ) : (
-            <span className="text-lg">🔐</span>
+        {/* Right side container */}
+        <div className="flex items-center gap-3">
+          {/* Streak Badge */}
+          {tripCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-uva-primary/10 rounded-full px-2.5 py-1.5">
+              <span className="text-sm">🔥</span>
+              <span className="font-bold text-uva-primary text-sm">{calculateCurrentStreak(loadTrips())}</span>
+            </div>
           )}
-        </button>
+
+          {/* Account Button */}
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+          >
+            {user ? (
+              <span className="text-lg">👤</span>
+            ) : (
+              <span className="text-lg">🔐</span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Map Controls - Below Top Bar, Left Side */}
@@ -467,16 +649,6 @@ export default function Home() {
         />
       </div>
 
-      {/* Streak Badge - Below Top Bar Right */}
-      {tripCount > 0 && (
-        <div className="absolute top-16 right-2 sm:right-4" style={{ zIndex: 100 }}>
-          <div className="bg-white rounded-full shadow-lg px-3 py-2 flex items-center gap-2">
-            <span className="text-lg">🔥</span>
-            <span className="font-bold text-uva-primary text-sm">{calculateCurrentStreak(loadTrips())}</span>
-          </div>
-        </div>
-      )}
-
       {/* Instructions - Bottom Left */}
       {!fromLocation && !panelOpen && (
         <div className="absolute bottom-24 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
@@ -509,25 +681,47 @@ export default function Home() {
         onClose={() => setPanelOpen(false)}
         onCollapse={() => setPanelExpanded(false)}
         onExpand={() => setPanelExpanded(true)}
-        onSelect={handleModeSelect}
-        onLogTrip={handleLogTrip}
+        onSelect={(modeString: string) => {
+          const mode = scores?.find((m) => m.mode === modeString);
+          if (mode) handleModeSelect(mode);
+        }}
+        onLogTrip={(modeString: string, gCO2e: number) => {
+          handleLogTrip(modeString, gCO2e);
+        }}
       />
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around py-2 z-[90]">
-        <Link href="/" className="flex flex-col items-center py-2 px-4 text-uva-primary">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <nav 
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around z-[90] h-14"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <Link href="/" className="flex flex-col items-center justify-center flex-1 text-uva-primary">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
           </svg>
-          <span className="text-xs mt-1 font-medium">Map</span>
+          <span className="text-[10px] font-medium">Map</span>
         </Link>
-        <Link href="/stats" className="flex flex-col items-center py-2 px-4 text-slate-400 hover:text-uva-accent transition-colors">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <Link href="/stats" className="flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-uva-accent transition-colors">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          <span className="text-xs mt-1 font-medium">Stats</span>
+          <span className="text-[10px] font-medium">Stats</span>
         </Link>
       </nav>
+
+      {/* Trip Logged Popup */}
+      {showTripLogged && loggedTripInfo && (
+        <div className="fixed inset-0 flex items-center justify-center z-[200] pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-xs mx-4 animate-bounce-in">
+            <div className="text-5xl mb-3">🌱</div>
+            <h3 className="text-lg font-bold text-green-600 mb-1">Trip Logged!</h3>
+            <p className="text-slate-600 text-sm">
+              You saved <span className="font-bold text-green-600">{loggedTripInfo.co2Saved.toLocaleString()}g</span> of CO₂
+            </p>
+            <p className="text-xs text-slate-400 mt-2">Keep up the green streak!</p>
+          </div>
+        </div>
+      )}
 
       {/* Auth Modal */}
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />

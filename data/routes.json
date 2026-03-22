@@ -1,0 +1,48 @@
+{
+  "uva-gtfs": {
+    "TL-2": { "name": "Charter", "color": "#6B7280" },
+    "TL-11": { "name": "Training", "color": "#6B7280" },
+    "TL-33": { "name": "Training", "color": "#6B7280" },
+    "TL-38": { "name": "Training", "color": "#6B7280" },
+    "TL-55": { "name": "Orange Loop", "color": "#C2410C" },
+    "TL-57": { "name": "Gold Line", "color": "#B45309" },
+    "TL-58": { "name": "Silver Line", "color": "#475569" },
+    "TL-59": { "name": "Night Pilot", "color": "#1E3A5F" },
+    "TL-67": { "name": "Gold Line", "color": "#B45309" },
+    "TL-68": { "name": "Green Line", "color": "#15803D" },
+    "TL-69": { "name": "Snow Special", "color": "#3B82F6" },
+    "TL-70": { "name": "Orange Line", "color": "#C2410C" },
+    "TL-71": { "name": "Green Loop", "color": "#15803D" },
+    "TL-72": { "name": "Purple Line", "color": "#6B21A8" },
+    "TL-73": { "name": "Purple Line", "color": "#6B21A8" },
+    "TL-74": { "name": "Purple Line", "color": "#6B21A8" },
+    "_default": { "name": "UVA Transit", "color": "#232D4B" }
+  },
+  "cat-gtfs": {
+    "1": { "name": "PVCC/Woolen Mills", "color": "#007A53" },
+    "2": { "name": "5th Street Station", "color": "#007A53" },
+    "3": { "name": "Southwood/Belmont", "color": "#007A53" },
+    "4": { "name": "Cherry Ave/Harris Rd", "color": "#007A53" },
+    "5": { "name": "Commonwealth", "color": "#007A53" },
+    "6": { "name": "Ridge St/Prospect Ave", "color": "#007A53" },
+    "7": { "name": "Emmet St/Seminole Trail", "color": "#007A53" },
+    "8": { "name": "Preston Ave/Emmet St", "color": "#007A53" },
+    "9": { "name": "UVA Health/YMCA", "color": "#007A53" },
+    "10": { "name": "Pantops", "color": "#007A53" },
+    "11": { "name": "Locust Ave/Rio Rd", "color": "#007A53" },
+    "Trolley": { "name": "Free Trolley", "color": "#007A53" },
+    "_default": { "name": "CAT Transit", "color": "#007A53" }
+  },
+  "jaunt-gtfs": {
+    "Croz_AM_East_3": { "name": "Crozet (East AM)", "color": "#D97706" },
+    "Buck_East_AM": { "name": "Buckingham (East)", "color": "#D97706" },
+    "Croz_PM_HOL_Loop_1": { "name": "Crozet (Holiday Evening)", "color": "#D97706" },
+    "Buck_North_AM": { "name": "Buckingham (North)", "color": "#D97706" },
+    "Croz_EV_Loop": { "name": "Crozet (Evening)", "color": "#D97706" },
+    "29North_PM_2 (1)": { "name": "Route 29 North", "color": "#D97706" },
+    "Love_AM": { "name": "Lovingston", "color": "#D97706" },
+    "Croz_AM_HOL_Loop_1": { "name": "Crozet (Holiday AM)", "color": "#D97706" },
+    "Croz_AM_West_2 (1)": { "name": "Crozet (West)", "color": "#D97706" },
+    "_default": { "name": "CONNECT", "color": "#D97706" }
+  }
+}

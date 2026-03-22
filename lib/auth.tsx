@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
       setLoading(false);
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
     });
     if (!error) {
-      await supabase.auth.getSession().then(({ data }) => {
+      await supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
         if (data.session?.user) {
           syncOnLogin(data.session.user.id);
         }

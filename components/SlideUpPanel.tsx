@@ -7,12 +7,20 @@ interface ModeScore {
   mode: string;
   label: string;
   gCO2e: number;
+  co2Saved: number;
   timeMin: number;
   costUSD: number;
   recommended: boolean;
   icon: string;
   color: string;
   warning?: string;
+  transitStops?: {
+    origin: { id: string; lat: number; lon: number; name?: string };
+    destination: { id: string; lat: number; lon: number; name?: string };
+  };
+  shapePoints?: { lat: number; lng: number }[];
+  nextDepartureTime?: string;
+  minutesUntilDeparture?: number;
 }
 
 interface SlideUpPanelProps {
@@ -26,7 +34,7 @@ interface SlideUpPanelProps {
   onCollapse: () => void;
   onExpand: () => void;
   onSelect: (mode: string) => void;
-  onLogTrip: (mode: string, gCO2e: number) => void;
+  onLogTrip: (mode: string, co2Saved: number) => void;
 }
 
 export default function SlideUpPanel({
@@ -57,7 +65,8 @@ export default function SlideUpPanel({
     onSelect(mode.mode);
   };
 
-  const savings = baseline - (selectedMode ? modes.find(m => m.mode === selectedMode)?.gCO2e || 0 : 0);
+  const selectedModeData = selectedMode ? modes.find(m => m.mode === selectedMode) : null;
+  const savings = selectedModeData?.co2Saved || 0;
   const savingsPercent = selectedMode && baseline > 0 
     ? Math.round((savings / baseline) * 100) 
     : 0;
@@ -114,6 +123,15 @@ export default function SlideUpPanel({
         {/* Drag Handle */}
         <div 
           className="flex flex-col items-center cursor-grab active:cursor-grabbing select-none"
+          onClick={() => {
+            if (isExpanded) {
+              setCurrentHeight(window.innerHeight * 0.15);
+              onCollapse();
+            } else {
+              setCurrentHeight(window.innerHeight * 0.6);
+              onExpand();
+            }
+          }}
           onMouseDown={(e) => {
             e.preventDefault();
             handleDragStart(e.clientY);
@@ -169,7 +187,13 @@ export default function SlideUpPanel({
         </div>
 
         {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div 
+          className="flex-1 overflow-y-auto px-4 py-3 pb-16"
+          style={{ 
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain'
+          }}
+        >
           {modes.length > 0 ? (
             <div className="space-y-2">
               {modes.map((mode) => (
@@ -178,8 +202,9 @@ export default function SlideUpPanel({
                   mode={mode}
                   isSelected={selectedMode === mode.mode}
                   baseline={baseline}
+                  isWorst={mode.mode === 'solo_car'}
                   onSelect={() => handleModeSelect(mode)}
-                  onLogTrip={() => onLogTrip(mode.mode, mode.gCO2e)}
+                  onLogTrip={() => onLogTrip(mode.mode, mode.co2Saved)}
                 />
               ))}
             </div>
