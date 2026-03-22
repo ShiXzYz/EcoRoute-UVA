@@ -6,6 +6,7 @@ interface ModeCardProps {
   mode: ModeResult;
   isSelected: boolean;
   baseline: number;
+  isWorst?: boolean;
   onSelect: () => void;
   onLogTrip: () => void;
 }
@@ -35,6 +36,7 @@ export default function ModeCard({
   mode,
   isSelected,
   baseline,
+  isWorst = false,
   onSelect,
   onLogTrip,
 }: ModeCardProps) {
@@ -45,8 +47,10 @@ export default function ModeCard({
       className={`p-4 rounded-lg border-2 transition-all cursor-pointer ${
         isSelected
           ? 'border-green-500 bg-green-50 shadow-md'
+          : isWorst
+          ? 'border-red-400 bg-white hover:border-red-500 hover:shadow-sm'
           : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-      } ${mode.recommended ? 'ring-2 ring-green-300' : ''}`}
+      } ${mode.recommended ? 'ring-2 ring-green-300' : ''}${isWorst && !isSelected ? ' ring-1 ring-red-300' : ''}`}
     >
       {/* Header: Mode name + badges */}
       <div className="flex items-start justify-between mb-3">
@@ -106,7 +110,7 @@ export default function ModeCard({
             e.stopPropagation();
             onLogTrip();
           }}
-          className="w-full mt-3 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg transition-colors"
+          className="w-full mt-3 bg-eco-green hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg transition-colors"
         >
           ✓ I took this route
         </button>

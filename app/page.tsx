@@ -29,7 +29,7 @@ import { useAuth } from '@/lib/auth';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
 import { addTrip, saveTripToSupabase, loadTrips } from '@/lib/trips';
 
-const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
+const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk'];
 
 function calculateCurrentStreak(trips: any[]): number {
   const greenTrips = trips.filter(t => GREEN_MODES.includes(t.mode));

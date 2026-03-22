@@ -26,9 +26,10 @@ interface Stats {
   weeklyGSaved: number;
   weeklyTrips: number;
   weeklyModeBreakdown: Record<string, number>;
+  greenMiles: number;
 }
 
-const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
+const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk'];
 
 function loadTrips(): TripLog[] {
   if (typeof window === 'undefined') return [];
@@ -46,6 +47,7 @@ function calculateStats(trips: TripLog[]): Stats {
 
   let totalGSaved = 0;
   let totalMiles = 0;
+  let greenMiles = 0;
   let totalTrips = trips.length;
   let modeBreakdown: Record<string, number> = {};
   let weeklyGSaved = 0;
@@ -55,6 +57,11 @@ function calculateStats(trips: TripLog[]): Stats {
   trips.forEach(trip => {
     totalMiles += trip.distanceMiles;
     modeBreakdown[trip.mode] = (modeBreakdown[trip.mode] || 0) + 1;
+    
+    // Track green mode miles for gas savings calculation
+    if (GREEN_MODES.includes(trip.mode)) {
+      greenMiles += trip.distanceMiles;
+    }
     
     // gCO2e now stores co2Saved (CO2 saved vs driving solo)
     // solo_car trips have co2Saved = 0
@@ -68,7 +75,7 @@ function calculateStats(trips: TripLog[]): Stats {
     }
   });
 
-  return { totalGSaved, totalMiles, totalTrips, modeBreakdown, weeklyGSaved, weeklyTrips, weeklyModeBreakdown };
+  return { totalGSaved, totalMiles, totalTrips, modeBreakdown, weeklyGSaved, weeklyTrips, weeklyModeBreakdown, greenMiles };
 }
 
 function calculateStreak(trips: TripLog[]): StreakData {
@@ -146,7 +153,7 @@ function calculateStreak(trips: TripLog[]): StreakData {
 }
 
 export default function StatsPage() {
-  const [stats, setStats] = useState<Stats>({ totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0, weeklyModeBreakdown: {} });
+  const [stats, setStats] = useState<Stats>({ totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0, weeklyModeBreakdown: {}, greenMiles: 0 });
   const [streak, setStreak] = useState<StreakData>({ current: 0, longest: 0, lastTripDate: null, badgeUnlocked: false });
 
   const loadData = useCallback(() => {
@@ -175,7 +182,7 @@ export default function StatsPage() {
   const annualKgSaved = weeklyKgSaved * 52;
   const treesEquivalent = annualKgSaved / 60;
 
-  const milesAvoided = stats.totalMiles * 0.3;
+  const milesAvoided = stats.greenMiles;
   const gasSaved = (milesAvoided / 28) * 3.5;
 
   const uva2030GoalKg = 50000;
@@ -262,7 +269,7 @@ export default function StatsPage() {
         <div className="bg-white rounded-2xl shadow-md p-4">
           <div className="flex items-center gap-3 mb-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-1000">Trips This Week</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Trips This Week</h2>
             </div>
           </div>
           <div className="space-y-2">

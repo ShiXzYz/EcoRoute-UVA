@@ -66,6 +66,7 @@ export default function ModeCards({
             mode={mode}
             isSelected={selectedMode === mode.mode}
             baseline={baseline}
+            isWorst={mode.mode === 'solo_car'}
             onSelect={() => handleModeSelect(mode)}
             onLogTrip={() => onLogTrip(mode.mode, mode.co2Saved)}
           />

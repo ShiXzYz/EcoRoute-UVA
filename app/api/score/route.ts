@@ -13,15 +13,33 @@
 import { getNearestStops, getNextDeparture, findConnectingStops, getShapePoints, getRouteName } from '@/lib/gtfs';
 
 /**
- * EPA Emission Factors (g CO₂e per mile) — Hardcoded 2023 baseline
- * Source: EPA 2023 data
+ * EPA Emission Factors (g CO₂e per mile, PER PASSENGER)
+ * Transit bus factors account for vehicle fuel consumption divided by avg occupancy
  * 
- * Key modes:
+ * TRANSIT BUS CALCULATIONS:
+ * Formula: (MPG conversion to gal/mi) × (10,210 g CO₂e/gal gasoline) ÷ avg passengers
+ * 
+ * - uts_bus: 160 g CO₂e/mi
+ *   Vehicle: 3.2 MPG (campus routes, ~10 mph avg) = 0.3125 gal/mi
+ *   Emissions: 0.3125 × 10,210 = 3,190 g CO₂e/vehicle-mi
+ *   Avg occupancy: 20 passengers → 3,190 ÷ 20 ≈ 160 g per passenger
+ * 
+ * - cat_bus: 265 g CO₂e/mi
+ *   Vehicle: 3.5 MPG (city routes, ~12 mph avg) = 0.286 gal/mi
+ *   Emissions: 0.286 × 10,210 = 2,920 g CO₂e/vehicle-mi
+ *   Avg occupancy: 11 passengers → 2,920 ÷ 11 ≈ 265 g per passenger
+ * 
+ * - connect_bus: 95 g CO₂e/mi
+ *   Vehicle: 6.0 MPG (commuter/highway, ~30 mph avg, 35-ft coach) = 0.167 gal/mi
+ *   Emissions: 0.167 × 10,210 = 1,705 g CO₂e/vehicle-mi
+ *   Avg occupancy: 18 passengers → 1,705 ÷ 18 ≈ 95 g per passenger
+ * 
+ * OTHER MODES:
  * - solo_car: 400 — average passenger vehicle (baseline)
  * - carpool_2: 200 — 2 people sharing
  * - carpool_3: 133 — 3 people sharing
- * - uts_bus, cat_bus, connect_bus: 44 — transit bus at 45% load factor (UVA free)
- * - ebike: 8 — electric bike
+ * - ebike: 8 — electric bike (VEO)
+ * - escooter: 8 — electric scooter (VEO)
  * - bike: 0 — zero operational emissions
  * - walk: 0 — zero operational emissions
  * - ev: 120 — electric vehicle
@@ -32,10 +50,11 @@ const EMISSION_FACTORS: Record<string, number> = {
   solo_car: 400,
   carpool_2: 200,
   carpool_3: 133,
-  uts_bus: 44,
-  cat_bus: 44,
-  connect_bus: 44,
+  uts_bus: 160,
+  cat_bus: 265,
+  connect_bus: 95,
   ebike: 8,
+  escooter: 8,
   bike: 0,
   walk: 0,
   ev: 120,
@@ -108,12 +127,16 @@ function scoreMode(mode: string, distance: number, walkTimeMin: number = 0): Omi
 
   const timeEstimates: Record<string, number> = {
     solo_car: Math.round((distance / 25) * 60),
+    carpool_2: Math.round((distance / 25) * 60),
+    carpool_3: Math.round((distance / 25) * 60),
     uts_bus: Math.round((distance / 12) * 60) + 8 + walkTimeMin,
     cat_bus: Math.round((distance / 12) * 60) + 8 + walkTimeMin,
     connect_bus: Math.round((distance / 15) * 60) + 5 + walkTimeMin,
     ebike: Math.round((distance / 12) * 60),
+    escooter: Math.round((distance / 12) * 60),
     bike: Math.round((distance / 10) * 60),
     walk: Math.round((distance / WALK_SPEED_MPH) * 60),
+    ev: Math.round((distance / 25) * 60),
   };
 
   const costEstimates: Record<string, number> = {
@@ -154,8 +177,7 @@ function getModeLabel(
     uts_bus: 'UTS Bus',
     cat_bus: 'CAT Transit',
     connect_bus: 'CONNECT Bus',
-    ebike: 'E-Bike (VEO)',
-    escooter: 'E-Scooter (VEO)',
+    ebike: 'E-Bike/Scooter (VEO)',
     bike: 'Bike',
     walk: 'Walk',
   };
@@ -228,35 +250,19 @@ function clipShapeToStops(
     return [];
   }
 
-  let startIdx = originNearest.index;
-  let endIdx = destNearest.index;
+  const startIdx = originNearest.index;
+  const endIdx = destNearest.index;
 
-  // Determine direction: check which direction makes sense for travel
-  // If origin index > dest index, the shape might be going backwards
-  // We need to check both directions and use the one with fewer points (shorter segment)
-  
-  // Option 1: Forward direction (origin -> dest as indices increase)
-  const forwardSegment = points.slice(
+  let segment = points.slice(
     Math.min(startIdx, endIdx),
     Math.max(startIdx, endIdx) + 1
   );
-  
-  // Option 2: Check if going backwards makes more sense
-  // Look at distances along the shape in both directions
-  const originToDestForward = endIdx - startIdx;
-  
-  // If origin comes after dest in shape order, try reversing
-  if (originToDestForward < 0) {
-    // Swap - use the reversed segment
-    startIdx = destNearest.index;
-    endIdx = originNearest.index;
+
+  // If origin index > dest index, the shape is going backwards on this route
+  // We need to reverse the segment so it visually shows the correct direction
+  if (startIdx > endIdx) {
+    segment = segment.reverse();
   }
-
-  // Final segment
-  const segment = points.slice(
-    Math.min(startIdx, endIdx),
-    Math.max(startIdx, endIdx) + 1
-  );
 
   // If segment is too short (<3 points) or too long (>50% of full shape), return empty
   // to avoid showing nonsensical routes
@@ -319,9 +325,9 @@ export async function POST(req: Request) {
 
     const modes: ModeResult[] = [];
 
-    // 1. Non-transit modes: car, bike, walk, ebike, escooter
+    // 1. Non-transit modes: car, bike, walk, micro-mobility
     // These use Google Directions polyline directly
-    const nonTransitModes = ['solo_car', 'bike', 'walk', 'ebike', 'escooter'];
+    const nonTransitModes = ['solo_car', 'bike', 'walk', 'ebike'];
     for (const mode of nonTransitModes) {
       const score = scoreMode(mode, distance_miles);
       if (score) {
@@ -453,7 +459,7 @@ export async function POST(req: Request) {
             ...score,
             mode: modeKey,
             timeMin: totalTransitTime, // Override with calculated time
-            label: `${agencyName}${routeNames ? ` (${routeNames})` : ''} — ${hasSchedule ? `Departs ${minutesUntilDeparture} min (${nextTime})` : 'Check schedule'}`,
+            label: `${agencyName}${routeNames ? ` (${routeNames})` : ''}${hasSchedule ? ` — Departs ${minutesUntilDeparture} min (${nextTime})` : ''}`,
             recommended: false,
             transitStops: {
               origin: {
@@ -477,7 +483,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Sort by emiss ions (ascending) and mark lowest as recommended
+    // 3. Sort by emissions (ascending) and mark lowest as recommended
     modes.sort((a, b) => a.gCO2e - b.gCO2e);
 
     if (modes.length > 0) {

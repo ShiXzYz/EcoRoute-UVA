@@ -231,7 +231,7 @@ export default function SearchBar({
             defaultValue={fromLocation?.displayName || ''}
             className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
               selectedType === 'from' 
-                ? 'border-uva-accent bg-blue-50' 
+                ? 'border-uva-accent bg-uva-accent/10' 
                 : 'border-slate-200 bg-white'
             }`}
             onFocus={() => onSelectedTypeChange('from')}
@@ -243,7 +243,7 @@ export default function SearchBar({
             defaultValue={toLocation?.displayName || ''}
             className={`w-full px-3 py-2.5 text-sm border rounded-lg transition-all ${
               selectedType === 'to' 
-                ? 'border-eco-red bg-red-50' 
+                ? 'border-eco-red bg-eco-red/10' 
                 : 'border-slate-200 bg-white'
             }`}
             onFocus={() => onSelectedTypeChange('to')}

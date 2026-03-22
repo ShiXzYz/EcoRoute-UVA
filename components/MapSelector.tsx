@@ -96,9 +96,6 @@ export default function MapSelector({
     mapInstanceRef.current = map;
     setMapReady(true);
 
-    mapInstanceRef.current = map;
-    setMapReady(true);
-
     map.addListener('click', async (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
 
@@ -289,7 +286,7 @@ export default function MapSelector({
   if (!isLoaded) {
     return (
       <div className="w-full h-full bg-slate-200 flex items-center justify-center">
-        <div className="w-8 h-8 border-3 border-uva-accent border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-uva-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
