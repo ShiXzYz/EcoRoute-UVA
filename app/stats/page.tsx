@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import UVAProgress from '@/components/UVAProgress';
 
 interface TripLog {
   mode: string;
@@ -24,6 +25,7 @@ interface Stats {
   modeBreakdown: Record<string, number>;
   weeklyGSaved: number;
   weeklyTrips: number;
+  weeklyModeBreakdown: Record<string, number>;
 }
 
 const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
@@ -49,6 +51,7 @@ function calculateStats(trips: TripLog[]): Stats {
   let modeBreakdown: Record<string, number> = {};
   let weeklyGSaved = 0;
   let weeklyTrips = 0;
+  let weeklyModeBreakdown: Record<string, number> = {};
 
   trips.forEach(trip => {
     totalMiles += trip.distanceMiles;
@@ -61,13 +64,14 @@ function calculateStats(trips: TripLog[]): Stats {
     const tripDate = new Date(trip.date);
     if (tripDate >= weekAgo) {
       weeklyTrips++;
+      weeklyModeBreakdown[trip.mode] = (weeklyModeBreakdown[trip.mode] || 0) + 1;
       if (trip.mode !== CAR_MODE) {
         weeklyGSaved += trip.gCO2e;
       }
     }
   });
 
-  return { totalGSaved, totalMiles, totalTrips, modeBreakdown, weeklyGSaved, weeklyTrips };
+  return { totalGSaved, totalMiles, totalTrips, modeBreakdown, weeklyGSaved, weeklyTrips, weeklyModeBreakdown };
 }
 
 function calculateStreak(trips: TripLog[]): StreakData {
@@ -145,7 +149,7 @@ function calculateStreak(trips: TripLog[]): StreakData {
 }
 
 export default function StatsPage() {
-  const [stats, setStats] = useState<Stats>({ totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0 });
+  const [stats, setStats] = useState<Stats>({ totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0, weeklyModeBreakdown: {} });
   const [streak, setStreak] = useState<StreakData>({ current: 0, longest: 0, lastTripDate: null, badgeUnlocked: false });
 
   const loadData = useCallback(() => {
@@ -176,10 +180,6 @@ export default function StatsPage() {
 
   const milesAvoided = stats.totalMiles * 0.3;
   const gasSaved = (milesAvoided / 28) * 3.5;
-
-  const uvtTrips = (stats.modeBreakdown['uts_bus'] || 0) + (stats.modeBreakdown['cat_bus'] || 0) + (stats.modeBreakdown['connect_bus'] || 0);
-  const bikeTrips = (stats.modeBreakdown['bike'] || 0) + (stats.modeBreakdown['ebike'] || 0);
-  const walkTrips = stats.modeBreakdown['walk'] || 0;
 
   const uva2030GoalKg = 50000;
   const progressPercent = Math.min((stats.totalGSaved / uva2030GoalKg) * 100, 100);
@@ -214,84 +214,82 @@ export default function StatsPage() {
 
         {/* CO₂ to Trees */}
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-md p-4 text-white">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-3xl">🌳</span>
-            <div>
-              <h2 className="text-lg font-semibold">CO₂ to Trees</h2>
-              <p className="text-sm text-green-100">Annual impact projection</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-5xl">🌳</span>
+              <div>
+                <p className="text-xs text-green-100 opacity-80">Annual impact</p>
+                <h2 className="text-sm font-semibold text-green-100">CO₂ to Trees</h2>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <p className="text-4xl font-bold">{treesEquivalent.toFixed(2)}</p>
+              <p className="text-xs text-green-100">trees/year</p>
             </div>
           </div>
-          <p className="text-3xl font-bold">{treesEquivalent.toFixed(2)}</p>
-          <p className="text-sm text-green-100 mt-1">
+          <p className="text-sm text-green-100 mt-3">
             {weeklyKgSaved.toFixed(1)} kg saved this week ≈ {treesEquivalent.toFixed(1)} trees grown per year
           </p>
-          <p className="text-xs text-green-200 mt-2">
+          <p className="text-xs text-green-200 mt-2 opacity-80">
             Based on EPA: One urban tree absorbs ~60 kg CO₂/year
           </p>
         </div>
 
         {/* Gas Savings */}
         <div className="bg-white rounded-2xl shadow-md p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-3xl">💰</span>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-800">Gas Savings</h2>
-              <p className="text-sm text-slate-500">Estimated money saved</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-5xl">💰</span>
+              <div>
+                <p className="text-xs text-slate-500">Estimated savings</p>
+                <h2 className="text-sm font-semibold text-slate-700">Gas Savings</h2>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <p className="text-4xl font-bold text-green-600">${gasSaved.toFixed(2)}</p>
+              <p className="text-xs text-slate-500">this week</p>
             </div>
           </div>
-          <p className="text-3xl font-bold text-green-600">${gasSaved.toFixed(2)}</p>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 mt-3">
             saved on gas based on {(milesAvoided).toFixed(1)} miles avoided
           </p>
         </div>
 
-        {/* Mode Breakdown */}
+        {/* Mode Breakdown - Weekly */}
         <div className="bg-white rounded-2xl shadow-md p-4">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-3xl">🚌🚴</span>
             <div>
-              <h2 className="text-lg font-semibold text-slate-800">Mode Breakdown</h2>
-              <p className="text-sm text-slate-500">All time trips by mode</p>
+              <h2 className="text-lg font-semibold text-slate-1000">Trips This Week</h2>
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">🚌 Bus Rides</span>
-              <span className="font-semibold text-slate-800">{uvtTrips} trips</span>
+              <span className="text-sm text-slate-800">🚌 Transit</span>
+              <span className="font-semibold text-slate-800">
+                {(stats.weeklyModeBreakdown['uts_bus'] || 0) + 
+                 (stats.weeklyModeBreakdown['cat_bus'] || 0) + 
+                 (stats.weeklyModeBreakdown['connect_bus'] || 0)} trips
+              </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">🚴 Bike/E-bike</span>
-              <span className="font-semibold text-slate-800">{bikeTrips} trips</span>
+              <span className="text-sm text-slate-800">🚶 Walk/Bike</span>
+              <span className="font-semibold text-slate-800">
+                {(stats.weeklyModeBreakdown['walk'] || 0) + 
+                 (stats.weeklyModeBreakdown['bike'] || 0)} trips
+              </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">🚶 Walking</span>
-              <span className="font-semibold text-slate-800">{walkTrips} trips</span>
+              <span className="text-sm text-slate-800">⚡ E-Bike/Scooter</span>
+              <span className="font-semibold text-slate-800">
+                {(stats.weeklyModeBreakdown['ebike'] || 0) + 
+                 (stats.weeklyModeBreakdown['escooter'] || 0)} trips
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 2030 Progress */}
-        <div className="bg-white rounded-2xl shadow-md p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-3xl">📈</span>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-800">2030 Progress</h2>
-              <p className="text-sm text-slate-500">UVA Carbon Neutrality Goal</p>
-            </div>
-          </div>
-          <div className="w-full bg-slate-200 rounded-full h-4 mb-2">
-            <div 
-              className="bg-gradient-to-r from-uva-primary to-uva-accent h-4 rounded-full transition-all"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <p className="text-sm text-slate-600">
-            <span className="font-semibold">{(stats.totalGSaved / 1000).toFixed(1)} kg</span> of your contribution
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Goal: 50,000 kg (UVA&apos;s annual reduction target per student)
-          </p>
-        </div>
+        {/* UVA 2030 Progress */}
+        <UVAProgress userWeeklyKgSaved={weeklyKgSaved} />
 
         {/* Streak Tracker */}
         <div className="bg-white rounded-2xl shadow-md p-4">

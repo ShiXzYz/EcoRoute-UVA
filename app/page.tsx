@@ -234,6 +234,7 @@ export default function GPSPage() {
     setLoading(true);
     setSelectedMode(null);
     setScores(null);
+    setBaseline(0);
 
     try {
       // Client-side distance (rough estimate for UI)
@@ -254,6 +255,11 @@ export default function GPSPage() {
       });
 
       const data = await response.json();
+      
+      if (!response.ok || !data.scores || !data.baseline) {
+        throw new Error(data.error || 'Invalid API response');
+      }
+      
       setScores(data.scores);
       setBaseline(data.baseline.solo_car_gco2e);
       setDistance(distance_miles);

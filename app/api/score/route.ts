@@ -90,25 +90,25 @@ interface ModeResult {
  * Helper: Calculate emissions for a single mode
  * Pure calculation: distance × emission_factor
  */
-function scoreMode(mode: string, distance: number): Omit<ModeResult, 'label' | 'recommended'> | null {
+function scoreMode(mode: string, distance: number, walkTimeMin: number = 0): Omit<ModeResult, 'label' | 'recommended'> | null {
   const factor = EMISSION_FACTORS[mode as keyof typeof EMISSION_FACTORS];
   if (factor === undefined) return null;
 
-  // Time estimations (Charlottesville context)
+  const WALK_SPEED_MPH = 3;
+
   const timeEstimates: Record<string, number> = {
-    solo_car: Math.round((distance / 25) * 60),        // 25 mph avg
-    uts_bus: Math.round((distance / 12) * 60) + 8,     // 12 mph + 8 min wait
-    cat_bus: Math.round((distance / 12) * 60) + 8,
-    connect_bus: Math.round((distance / 15) * 60) + 5,
+    solo_car: Math.round((distance / 25) * 60),
+    uts_bus: Math.round((distance / 12) * 60) + 8 + walkTimeMin,
+    cat_bus: Math.round((distance / 12) * 60) + 8 + walkTimeMin,
+    connect_bus: Math.round((distance / 15) * 60) + 5 + walkTimeMin,
     ebike: Math.round((distance / 12) * 60),
     escooter: Math.round((distance / 10) * 60),
     bike: Math.round((distance / 10) * 60),
-    walk: Math.round((distance / 3) * 60),
+    walk: Math.round((distance / WALK_SPEED_MPH) * 60),
   };
 
-  // Cost estimations
   const costEstimates: Record<string, number> = {
-    solo_car: Math.round((distance / 28) * 3.5), // $3.5/gal, 28 mpg
+    solo_car: Math.round(distance * 0.39),
     uts_bus: 0,
     cat_bus: 0,
     connect_bus: 0,
@@ -364,7 +364,12 @@ export async function POST(req: Request) {
         const conn = bestConnection;
         const { nextTime, minutesUntilDeparture } = getNextDeparture(conn.originStop.id, feed);
 
-        // Determine mode key based on feed name
+        const originDist = originStopsInFeed.find(s => s.stop.id === conn.originStop.id)?.distanceMeters || 0;
+        const destDist = destStopsInFeed.find(s => s.stop.id === conn.destStop.id)?.distanceMeters || 0;
+        const WALK_SPEED_MPH = 3;
+        const METERS_TO_MILES = 0.000621371;
+        const walkTimeMin = Math.round((originDist * METERS_TO_MILES / WALK_SPEED_MPH) * 60 + (destDist * METERS_TO_MILES / WALK_SPEED_MPH) * 60);
+
         let modeKey = 'uts_bus';
         let agencyName = 'UVA Transit';
         if (feed === 'cat-gtfs') {
@@ -376,17 +381,16 @@ export async function POST(req: Request) {
           agencyName = 'CONNECT';
         }
 
-        // Get friendly route names using routes.json mapping
         const routeNames = conn.routes
           .map(r => {
             const friendly = getRouteName(feed, r.id);
             return friendly?.name || r.long_name || r.short_name;
           })
-          .filter((name, idx, arr) => arr.indexOf(name) === idx) // Remove duplicates
+          .filter((name, idx, arr) => arr.indexOf(name) === idx)
           .join(', ');
         const hasSchedule = nextTime !== null;
 
-        const score = scoreMode(modeKey, distance_miles);
+        const score = scoreMode(modeKey, distance_miles, walkTimeMin);
         if (score) {
           // Get shape points for polyline (clip to origin/dest stops)
           const allShapePoints = conn.shapeId ? getShapePoints(feed, conn.shapeId) : [];
