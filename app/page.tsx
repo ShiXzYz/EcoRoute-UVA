@@ -121,12 +121,8 @@ export default function Home() {
       setScores(data.scores);
       setBaseline(data.baseline.solo_car_gco2e);
       setDistance(distance_miles);
-
-      if (data.scores.length > 0) {
-        const defaultMode = data.scores[0].mode;
-        setSelectedMode(defaultMode);
-        fetchDirections(defaultMode);
-      }
+      setSelectedMode(null); // Don't auto-select, let user choose
+      setRoute(null);
 
       setPanelOpen(true);
     } catch (error) {
@@ -145,8 +141,16 @@ export default function Home() {
     if (!fromLocation || !toLocation) return;
 
     setRouteLoading(true);
+    setRoute(null); // Clear previous route while loading
 
+    // Delay to ensure Google Maps is fully loaded
     const tryFetch = async () => {
+      // Wait a bit longer for Google Maps to be ready
+      if (typeof window.google === 'undefined' || !window.google.maps || !window.google.maps.DirectionsService) {
+        setTimeout(tryFetch, 200);
+        return;
+      }
+
       // Check cache first
       const cached = await getCachedDirections(
         fromLocation.lat,
@@ -167,13 +171,9 @@ export default function Home() {
         return;
       }
 
-      // Wait for google to be available
-      if (typeof window.google === 'undefined' || !window.google.maps) {
-        setTimeout(tryFetch, 100);
-        return;
-      }
-
       try {
+        // eslint-disable-next-line
+        const maps = window.google.maps as any;
         const modeToTravelMode: Record<string, string> = {
           walking: 'WALKING',
           bike: 'BICYCLING',
@@ -187,22 +187,22 @@ export default function Home() {
           trolley: 'TRANSIT',
         };
 
-        const mode = modeToTravelMode[selectedMode] || 'DRIVING';
-        const directionsService = new window.google.maps.DirectionsService();
+        const travelMode = modeToTravelMode[selectedMode] || 'DRIVING';
+        const directionsService = new maps.DirectionsService();
 
         directionsService.route(
           {
-            origin: new window.google.maps.LatLng(fromLocation.lat, fromLocation.lng),
-            destination: new window.google.maps.LatLng(toLocation.lat, toLocation.lng),
-            travelMode: (window.google.maps.TravelMode as any)[mode],
+            origin: new maps.LatLng(fromLocation.lat, fromLocation.lng),
+            destination: new maps.LatLng(toLocation.lat, toLocation.lng),
+            travelMode: maps.TravelMode[travelMode],
           },
-          async (result, status) => {
-            if (status === 'OK' && result) {
+          async (result: any, status: string) => {
+            if (status === 'OK' && result && result.routes[0]) {
               // eslint-disable-next-line
               const polyline = result.routes[0].overview_polyline as any;
               const path = polyline.getPath ? polyline.getPath() : polyline;
-              const points = window.google.maps.geometry.encoding.decodePath(path);
-              
+              const points = maps.geometry.encoding.decodePath(path);
+
               // Cache the result
               await setCachedDirections(
                 fromLocation.lat,
@@ -221,6 +221,41 @@ export default function Home() {
               });
             } else {
               console.error('Directions failed:', status);
+              // Retry once after a delay
+              setTimeout(() => {
+                directionsService.route(
+                  {
+                    origin: new maps.LatLng(fromLocation.lat, fromLocation.lng),
+                    destination: new maps.LatLng(toLocation.lat, toLocation.lng),
+                    travelMode: maps.TravelMode[travelMode],
+                  },
+                  async (retryResult: any, retryStatus: string) => {
+                    if (retryStatus === 'OK' && retryResult && retryResult.routes[0]) {
+                      // eslint-disable-next-line
+                      const retryPolyline = retryResult.routes[0].overview_polyline as any;
+                      const retryPath = retryPolyline.getPath ? retryPolyline.getPath() : retryPolyline;
+                      const retryPoints = maps.geometry.encoding.decodePath(retryPath);
+
+                      await setCachedDirections(
+                        fromLocation.lat,
+                        fromLocation.lng,
+                        toLocation.lat,
+                        toLocation.lng,
+                        selectedMode,
+                        retryPath,
+                        retryResult.routes[0].legs[0]?.distance?.value || 0,
+                        retryResult.routes[0].legs[0]?.duration?.value || 0
+                      );
+
+                      setRoute({
+                        points: retryPoints.map((p: any) => ({ lat: p.lat(), lng: p.lng() })),
+                        color: undefined,
+                      });
+                    }
+                    setRouteLoading(false);
+                  }
+                );
+              }, 500);
             }
             setRouteLoading(false);
           }
@@ -231,7 +266,7 @@ export default function Home() {
       }
     };
 
-    tryFetch();
+    setTimeout(tryFetch, 300);
   };
 
   const handleModeSelect = (mode: string) => {
@@ -258,6 +293,7 @@ export default function Home() {
           selectedType={selectedType}
           route={route}
           mode={selectedMode || undefined}
+          key={route ? `route-${selectedMode}` : 'no-route'}
         />
       </div>
 

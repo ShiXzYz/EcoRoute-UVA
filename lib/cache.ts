@@ -20,16 +20,26 @@ export async function getCachedDirections(
   if (!isSupabaseConfigured) return null;
 
   try {
-    const { data } = await supabase
+    const oLat = roundCoord(originLat);
+    const oLng = roundCoord(originLng);
+    const dLat = roundCoord(destLat);
+    const dLng = roundCoord(destLng);
+
+    const { data, error } = await supabase
       .from('directions_cache')
       .select('polyline, distance_meters, duration_seconds')
-      .eq('origin_lat', roundCoord(originLat))
-      .eq('origin_lng', roundCoord(originLng))
-      .eq('dest_lat', roundCoord(destLat))
-      .eq('dest_lng', roundCoord(destLng))
+      .eq('origin_lat', oLat)
+      .eq('origin_lng', oLng)
+      .eq('dest_lat', dLat)
+      .eq('dest_lng', dLng)
       .eq('mode', mode)
       .gt('expires_at', new Date().toISOString())
-      .single();
+      .maybeSingle();
+
+    if (error) {
+      console.error('Cache read error (directions):', error);
+      return null;
+    }
 
     if (data) {
       return {
@@ -88,7 +98,7 @@ export async function getCachedScores(
   if (!isSupabaseConfigured) return null;
 
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('scores_cache')
       .select('scores')
       .eq('origin_lat', roundCoord(originLat))
@@ -97,7 +107,12 @@ export async function getCachedScores(
       .eq('dest_lng', roundCoord(destLng))
       .eq('distance_miles', Math.round(distanceMiles * 10) / 10)
       .gt('expires_at', new Date().toISOString())
-      .single();
+      .maybeSingle();
+
+    if (error) {
+      console.error('Cache read error (scores):', error);
+      return null;
+    }
 
     if (data?.scores) {
       return {

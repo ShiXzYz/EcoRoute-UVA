@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useGoogleMaps } from '@/lib/GoogleMapsContext';
 
 interface Location {
@@ -34,6 +34,15 @@ export default function SearchBar({
   const autocompleteFromRef = useRef<any>(null);
   // eslint-disable-next-line
   const autocompleteToRef = useRef<any>(null);
+  
+  // Store callbacks in refs to avoid effect re-runs
+  const onLocationSelectRef = useRef(onLocationSelect);
+  const onSelectedTypeChangeRef = useRef(onSelectedTypeChange);
+  
+  useEffect(() => {
+    onLocationSelectRef.current = onLocationSelect;
+    onSelectedTypeChangeRef.current = onSelectedTypeChange;
+  });
 
   useEffect(() => {
     if (!isLoaded || !inputFromRef.current || !inputToRef.current) return;
@@ -53,7 +62,7 @@ export default function SearchBar({
     autocompleteFromRef.current = new google.maps.places.Autocomplete(inputFromRef.current, options);
     autocompleteToRef.current = new google.maps.places.Autocomplete(inputToRef.current, options);
 
-    autocompleteFromRef.current.addListener('place_changed', () => {
+    const handleFromPlaceChanged = () => {
       const place = autocompleteFromRef.current?.getPlace();
       if (place?.geometry?.location) {
         const location = {
@@ -62,12 +71,12 @@ export default function SearchBar({
           name: place.name || place.formatted_address || 'From location',
           displayName: place.formatted_address,
         };
-        onLocationSelect(location, 'from');
-        onSelectedTypeChange('to');
+        onLocationSelectRef.current(location, 'from');
+        onSelectedTypeChangeRef.current('to');
       }
-    });
+    };
 
-    autocompleteToRef.current.addListener('place_changed', () => {
+    const handleToPlaceChanged = () => {
       const place = autocompleteToRef.current?.getPlace();
       if (place?.geometry?.location) {
         const location = {
@@ -76,10 +85,13 @@ export default function SearchBar({
           name: place.name || place.formatted_address || 'To location',
           displayName: place.formatted_address,
         };
-        onLocationSelect(location, 'to');
-        onSelectedTypeChange(null);
+        onLocationSelectRef.current(location, 'to');
+        onSelectedTypeChangeRef.current(null);
       }
-    });
+    };
+
+    autocompleteFromRef.current.addListener('place_changed', handleFromPlaceChanged);
+    autocompleteToRef.current.addListener('place_changed', handleToPlaceChanged);
 
     return () => {
       if (autocompleteFromRef.current) {
@@ -89,7 +101,7 @@ export default function SearchBar({
         google.maps.event.clearInstanceListeners(autocompleteToRef.current);
       }
     };
-  }, [isLoaded, onLocationSelect, onSelectedTypeChange]);
+  }, [isLoaded]);
 
   const handleDotClick = (type: 'from' | 'to') => {
     onSelectedTypeChange(selectedType === type ? null : type);
