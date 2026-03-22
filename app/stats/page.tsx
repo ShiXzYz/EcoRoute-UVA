@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 interface TripLog {
@@ -29,17 +29,17 @@ interface Stats {
 const GREEN_MODES = ['uts_bus', 'cat_bus', 'connect_bus', 'bike', 'ebike', 'walk', 'escooter'];
 const CAR_MODE = 'solo_car';
 
-function loadStats(): Stats {
-  if (typeof window === 'undefined') {
-    return { totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0 };
-  }
-  
+function loadTrips(): TripLog[] {
+  if (typeof window === 'undefined') return [];
   const saved = localStorage.getItem('ecoroute_trips');
-  if (!saved) {
-    return { totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0 };
-  }
+  return saved ? JSON.parse(saved) : [];
+}
 
-  const trips: TripLog[] = JSON.parse(saved);
+function saveTrips(trips: TripLog[]) {
+  localStorage.setItem('ecoroute_trips', JSON.stringify(trips));
+}
+
+function calculateStats(trips: TripLog[]): Stats {
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -50,15 +50,11 @@ function loadStats(): Stats {
   let weeklyGSaved = 0;
   let weeklyTrips = 0;
 
-  const carTrips: TripLog[] = [];
-
   trips.forEach(trip => {
     totalMiles += trip.distanceMiles;
     modeBreakdown[trip.mode] = (modeBreakdown[trip.mode] || 0) + 1;
     
-    if (trip.mode === CAR_MODE) {
-      carTrips.push(trip);
-    } else {
+    if (trip.mode !== CAR_MODE) {
       totalGSaved += trip.gCO2e;
     }
 
@@ -75,51 +71,55 @@ function loadStats(): Stats {
 }
 
 function calculateStreak(trips: TripLog[]): StreakData {
-  if (trips.length === 0) {
+  // Get green trips only
+  const greenTrips = trips.filter(trip => GREEN_MODES.includes(trip.mode));
+  
+  if (greenTrips.length === 0) {
     return { current: 0, longest: 0, lastTripDate: null, badgeUnlocked: false };
   }
 
-  const sortedTrips = [...trips].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  
-  const greenTripDates = new Set<string>();
-  sortedTrips.forEach(trip => {
-    if (GREEN_MODES.includes(trip.mode)) {
-      const date = new Date(trip.date).toDateString();
-      greenTripDates.add(date);
-    }
+  // Get unique days with green trips
+  const greenDays = new Set<string>();
+  greenTrips.forEach(trip => {
+    const date = new Date(trip.date).toDateString();
+    greenDays.add(date);
   });
 
-  const sortedDates = Array.from(greenTripDates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  // Sort days from newest to oldest
+  const sortedDays = Array.from(greenDays).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
   
-  let currentStreak = 0;
-  let longestStreak = 0;
-  let tempStreak = 0;
-  let today = new Date().toDateString();
-  
+  const today = new Date().toDateString();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toDateString();
 
-  if (sortedDates[0] === today || sortedDates[0] === yesterdayStr) {
-    tempStreak = 1;
-    for (let i = 1; i < sortedDates.length; i++) {
-      const prev = new Date(sortedDates[i - 1]);
-      const curr = new Date(sortedDates[i]);
-      const diffDays = Math.floor((prev.getTime() - curr.getTime()) / (1000 * 60 * 60 * 24));
+  let currentStreak = 0;
+  let longestStreak = 0;
+  
+  // Check if most recent green trip was today or yesterday
+  const mostRecentDay = sortedDays[0];
+  if (mostRecentDay === today || mostRecentDay === yesterdayStr) {
+    // Count consecutive days
+    let checkDate = new Date(mostRecentDay);
+    for (const day of sortedDays) {
+      const dayDate = new Date(day);
+      const expectedPrevDay = new Date(checkDate);
+      expectedPrevDay.setDate(expectedPrevDay.getDate() - 1);
       
-      if (diffDays === 1) {
-        tempStreak++;
+      if (dayDate.toDateString() === checkDate.toDateString()) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
       } else {
         break;
       }
     }
-    currentStreak = tempStreak;
   }
 
-  tempStreak = 1;
-  for (let i = 1; i < sortedDates.length; i++) {
-    const prev = new Date(sortedDates[i - 1]);
-    const curr = new Date(sortedDates[i]);
+  // Calculate longest streak (from all data)
+  let tempStreak = 1;
+  for (let i = 1; i < sortedDays.length; i++) {
+    const prev = new Date(sortedDays[i - 1]);
+    const curr = new Date(sortedDays[i]);
     const diffDays = Math.floor((prev.getTime() - curr.getTime()) / (1000 * 60 * 60 * 24));
     
     if (diffDays === 1) {
@@ -131,10 +131,15 @@ function calculateStreak(trips: TripLog[]): StreakData {
   }
   longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
 
+  // Reset streak if last green trip was more than 1 day ago
+  if (mostRecentDay !== today && mostRecentDay !== yesterdayStr) {
+    currentStreak = 0;
+  }
+
   return {
     current: currentStreak,
     longest: longestStreak,
-    lastTripDate: sortedDates[0] || null,
+    lastTripDate: mostRecentDay,
     badgeUnlocked: currentStreak >= 7,
   };
 }
@@ -143,14 +148,27 @@ export default function StatsPage() {
   const [stats, setStats] = useState<Stats>({ totalGSaved: 0, totalMiles: 0, totalTrips: 0, modeBreakdown: {}, weeklyGSaved: 0, weeklyTrips: 0 });
   const [streak, setStreak] = useState<StreakData>({ current: 0, longest: 0, lastTripDate: null, badgeUnlocked: false });
 
-  useEffect(() => {
-    const loadedStats = loadStats();
-    setStats(loadedStats);
-
-    const saved = localStorage.getItem('ecoroute_trips');
-    const trips: TripLog[] = saved ? JSON.parse(saved) : [];
+  const loadData = useCallback(() => {
+    const trips = loadTrips();
+    setStats(calculateStats(trips));
     setStreak(calculateStreak(trips));
   }, []);
+
+  useEffect(() => {
+    loadData();
+    
+    // Listen for storage changes (from other tabs/windows)
+    const handleStorage = () => loadData();
+    window.addEventListener('storage', handleStorage);
+    
+    // Poll for changes every second
+    const interval = setInterval(loadData, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+    };
+  }, [loadData]);
 
   const weeklyKgSaved = stats.weeklyGSaved / 1000;
   const annualKgSaved = weeklyKgSaved * 52;
@@ -337,13 +355,13 @@ export default function StatsPage() {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around py-2 z-[90]">
-        <Link href="/" className="flex flex-col items-center py-2 px-4 text-uva-primary">
+        <Link href="/" className="flex flex-col items-center py-2 px-4 text-slate-400 hover:text-uva-primary transition-colors">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
           </svg>
           <span className="text-xs mt-1 font-medium">Map</span>
         </Link>
-        <Link href="/stats" className="flex flex-col items-center py-2 px-4 text-uva-accent">
+        <Link href="/stats" className="flex flex-col items-center py-2 px-4 text-uva-primary">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>

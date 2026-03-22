@@ -5,7 +5,10 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import SearchBar from '@/components/SearchBar';
 import SlideUpPanel from '@/components/SlideUpPanel';
+import AuthModal from '@/components/AuthModal';
+import { useAuth } from '@/lib/auth';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
+import { addTrip, saveTripToSupabase } from '@/lib/trips';
 
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
@@ -61,6 +64,8 @@ export default function Home() {
   const [route, setRoute] = useState<RouteData | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { user } = useAuth();
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
@@ -136,7 +141,6 @@ export default function Home() {
   };
 
   const handleLogTrip = async (mode: string, gCO2e: number) => {
-    // Save trip to localStorage
     const tripEntry = {
       mode,
       gCO2e,
@@ -144,10 +148,14 @@ export default function Home() {
       date: new Date().toISOString(),
     };
 
-    const saved = localStorage.getItem('ecoroute_trips');
-    const trips = saved ? JSON.parse(saved) : [];
-    trips.push(tripEntry);
-    localStorage.setItem('ecoroute_trips', JSON.stringify(trips));
+    addTrip(tripEntry);
+
+    if (user) {
+      const saved = await saveTripToSupabase(user.id, tripEntry);
+      if (saved) {
+        console.log('Trip saved to cloud');
+      }
+    }
 
     setStreak(streak + 1);
     console.log('Logged trip:', { mode, gCO2e, distance, streak: streak + 1 });
@@ -317,9 +325,9 @@ export default function Home() {
 
       {/* Top Bar - Logo Centered */}
       <div 
-        className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-center z-[100]"
+        className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-between px-4 z-[100]"
       >
-        {/* Logo & App Name - Centered */}
+        {/* Logo & App Name - Left */}
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-uva-primary rounded-lg flex items-center justify-center">
             <span className="text-lg">🌿</span>
@@ -329,6 +337,18 @@ export default function Home() {
             <p className="text-[10px] text-uva-accent font-medium -mt-0.5">UVA</p>
           </div>
         </div>
+
+        {/* Account Button - Right */}
+        <button
+          onClick={() => setShowAuthModal(true)}
+          className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+        >
+          {user ? (
+            <span className="text-lg">👤</span>
+          ) : (
+            <span className="text-lg">🔐</span>
+          )}
+        </button>
       </div>
 
       {/* Map Controls - Below Top Bar, Left Side */}
@@ -449,6 +469,9 @@ export default function Home() {
           <span className="text-xs mt-1 font-medium">Stats</span>
         </Link>
       </nav>
+
+      {/* Auth Modal */}
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </main>
   );
 }
