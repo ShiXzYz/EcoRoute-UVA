@@ -15,6 +15,13 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  /* iOS Safari fix for viewport height */
+  min-height: -webkit-fill-available;
+}
+
+html {
+  /* Support for dynamic viewport height on iOS */
+  height: -webkit-fill-available;
 }
 
 body {
