@@ -121,6 +121,15 @@ export default function SlideUpPanel({
         {/* Drag Handle */}
         <div 
           className="flex flex-col items-center cursor-grab active:cursor-grabbing select-none"
+          onClick={() => {
+            if (isExpanded) {
+              setCurrentHeight(window.innerHeight * 0.15);
+              onCollapse();
+            } else {
+              setCurrentHeight(window.innerHeight * 0.6);
+              onExpand();
+            }
+          }}
           onMouseDown={(e) => {
             e.preventDefault();
             handleDragStart(e.clientY);

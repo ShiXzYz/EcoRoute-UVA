@@ -185,7 +185,7 @@ export default function StatsPage() {
   const progressPercent = Math.min((stats.totalGSaved / uva2030GoalKg) * 100, 100);
 
   return (
-    <div className="h-screen bg-slate-50 pb-20 flex flex-col overflow-hidden">
+    <div className="h-screen bg-slate-50 pb-14 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="bg-uva-primary text-white px-4 py-6 flex-shrink-0">
         <h1 className="text-2xl font-bold">Your Impact</h1>
@@ -354,18 +354,18 @@ export default function StatsPage() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around py-2 z-[90]">
-        <Link href="/" className="flex flex-col items-center py-2 px-4 text-slate-400 hover:text-uva-primary transition-colors">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around z-[90] h-14">
+        <Link href="/" className="flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-uva-primary transition-colors">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
           </svg>
-          <span className="text-xs mt-1 font-medium">Map</span>
+          <span className="text-[10px] font-medium">Map</span>
         </Link>
-        <Link href="/stats" className="flex flex-col items-center py-2 px-4 text-uva-primary">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <Link href="/stats" className="flex flex-col items-center justify-center flex-1 text-uva-primary">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          <span className="text-xs mt-1 font-medium">Stats</span>
+          <span className="text-[10px] font-medium">Stats</span>
         </Link>
       </nav>
     </div>
