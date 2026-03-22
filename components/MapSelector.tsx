@@ -233,5 +233,5 @@ export default function MapSelector({
     );
   }
 
-  return <div ref={mapRef} style={containerStyle} />;
+  return <div ref={mapRef} style={{ ...containerStyle, marginBottom: '64px' }} />;
 }

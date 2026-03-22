@@ -104,7 +104,7 @@ export default function SlideUpPanel({
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 z-50 px-2 sm:px-4"
+      className="fixed bottom-0 left-0 right-0 z-40 px-2 sm:px-4"
       style={{
         height: `${currentHeight}px`,
         transition: isDragging.current ? 'none' : 'height 0.3s ease-out',

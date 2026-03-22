@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import SearchBar from '@/components/SearchBar';
 import SlideUpPanel from '@/components/SlideUpPanel';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
@@ -135,8 +136,21 @@ export default function Home() {
   };
 
   const handleLogTrip = async (mode: string, gCO2e: number) => {
+    // Save trip to localStorage
+    const tripEntry = {
+      mode,
+      gCO2e,
+      distanceMiles: distance,
+      date: new Date().toISOString(),
+    };
+
+    const saved = localStorage.getItem('ecoroute_trips');
+    const trips = saved ? JSON.parse(saved) : [];
+    trips.push(tripEntry);
+    localStorage.setItem('ecoroute_trips', JSON.stringify(trips));
+
     setStreak(streak + 1);
-    console.log('Logged trip:', { mode, gCO2e, streak: streak + 1 });
+    console.log('Logged trip:', { mode, gCO2e, distance, streak: streak + 1 });
   };
 
   const fetchDirections = (selectedMode: string) => {
@@ -386,7 +400,7 @@ export default function Home() {
 
       {/* Instructions - Bottom Left */}
       {!fromLocation && !panelOpen && (
-        <div className="absolute bottom-8 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
+        <div className="absolute bottom-24 left-2 right-2 sm:left-4 sm:right-auto sm:max-w-xs" style={{ zIndex: 100 }}>
           <div className="bg-white bg-opacity-95 backdrop-blur rounded-lg shadow-lg px-4 py-3">
             <p className="text-sm text-slate-700">
               <span className="font-medium">Tip:</span> Search for a location or tap on the map.
@@ -419,6 +433,22 @@ export default function Home() {
         onSelect={handleModeSelect}
         onLogTrip={handleLogTrip}
       />
+
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around py-2 z-[90]">
+        <Link href="/" className="flex flex-col items-center py-2 px-4 text-uva-primary">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <span className="text-xs mt-1 font-medium">Map</span>
+        </Link>
+        <Link href="/stats" className="flex flex-col items-center py-2 px-4 text-slate-400 hover:text-uva-accent transition-colors">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <span className="text-xs mt-1 font-medium">Stats</span>
+        </Link>
+      </nav>
     </main>
   );
 }
