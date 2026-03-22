@@ -59,6 +59,7 @@ export default function Home() {
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
   const [route, setRoute] = useState<RouteData | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
 
   const handleLocationSelect = async (location: Location, type: 'from' | 'to') => {
     if (type === 'from') {
@@ -294,12 +295,75 @@ export default function Home() {
           selectedType={selectedType}
           route={route}
           mode={selectedMode || undefined}
+          mapType={mapType}
+          onMapTypeChange={setMapType}
           key={route ? `route-${selectedMode}` : 'no-route'}
         />
       </div>
 
-      {/* Search Bar - Floating at top with high z-index */}
-      <div className="absolute top-4 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-xl" style={{ zIndex: 100 }}>
+      {/* Top Bar - Logo Centered */}
+      <div 
+        className="absolute top-0 left-0 right-0 h-14 bg-white shadow-md flex items-center justify-center z-[100]"
+      >
+        {/* Logo & App Name - Centered */}
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-uva-primary rounded-lg flex items-center justify-center">
+            <span className="text-lg">🌿</span>
+          </div>
+          <div>
+            <h1 className="text-base font-bold text-uva-primary leading-tight">EcoRoute</h1>
+            <p className="text-[10px] text-uva-accent font-medium -mt-0.5">UVA</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Map Controls - Below Top Bar, Left Side */}
+      <div className="absolute top-16 left-2 flex flex-col gap-2" style={{ zIndex: 100 }}>
+        <div className="flex flex-col shadow-lg rounded-lg overflow-hidden">
+          <button
+            onClick={() => setMapType('roadmap')}
+            className={`px-3 py-2 text-xs font-medium transition-colors ${
+              mapType === 'roadmap'
+                ? 'bg-white text-uva-primary'
+                : 'bg-slate-800 text-white hover:bg-slate-700'
+            }`}
+          >
+            MAP
+          </button>
+          <button
+            onClick={() => setMapType('satellite')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-t border-slate-600 ${
+              mapType === 'satellite'
+                ? 'bg-white text-uva-primary'
+                : 'bg-slate-800 text-white hover:bg-slate-700'
+            }`}
+          >
+            SAT
+          </button>
+        </div>
+      </div>
+
+      {/* Full Screen Button - Below Top Bar, Right Side */}
+      <div className="absolute top-16 right-2" style={{ zIndex: 100 }}>
+        <button
+          onClick={() => {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              document.documentElement.requestFullscreen();
+            }
+          }}
+          className="p-2 bg-white hover:bg-slate-100 rounded-lg shadow-md transition-colors"
+          title="Full Screen"
+        >
+          <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Search Bar - Below Top Bar */}
+      <div className="absolute top-16 left-20 right-20 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-xl" style={{ zIndex: 100 }}>
         <SearchBar
           fromLocation={fromLocation}
           toLocation={toLocation}
@@ -310,9 +374,9 @@ export default function Home() {
         />
       </div>
 
-      {/* Streak Badge - Top Right */}
+      {/* Streak Badge - Below Top Bar Right */}
       {streak > 0 && (
-        <div className="absolute top-4 right-2 sm:right-4" style={{ zIndex: 100 }}>
+        <div className="absolute top-16 right-2 sm:right-4" style={{ zIndex: 100 }}>
           <div className="bg-white rounded-full shadow-lg px-3 py-2 flex items-center gap-2">
             <span className="text-lg">🔥</span>
             <span className="font-bold text-uva-primary text-sm">{streak}</span>

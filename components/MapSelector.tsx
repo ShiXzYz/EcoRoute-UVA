@@ -22,6 +22,8 @@ interface MapSelectorProps {
   selectedType: 'from' | 'to' | null;
   route?: RouteData | null;
   mode?: string;
+  mapType?: 'roadmap' | 'satellite';
+  onMapTypeChange?: (type: 'roadmap' | 'satellite') => void;
 }
 
 const containerStyle = {
@@ -53,10 +55,13 @@ export default function MapSelector({
   selectedType,
   route,
   mode,
+  mapType = 'roadmap',
+  onMapTypeChange,
 }: MapSelectorProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const [localMapType, setLocalMapType] = useState<'roadmap' | 'satellite'>(mapType);
   // eslint-disable-next-line
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
@@ -75,7 +80,11 @@ export default function MapSelector({
       disableDefaultUI: false,
       zoomControl: true,
       mapId: '27ee17fe3338eb9aeeeff1a2',
+      mapTypeControl: false,
     });
+
+    mapInstanceRef.current = map;
+    setMapReady(true);
 
     mapInstanceRef.current = map;
     setMapReady(true);
@@ -192,6 +201,21 @@ export default function MapSelector({
       map.fitBounds(bounds, 50);
     }
   }, [mapReady, fromLocation, toLocation, route, mode]);
+
+  // Handle map type changes
+  useEffect(() => {
+    if (mapInstanceRef.current && mapType) {
+      mapInstanceRef.current.setMapTypeId(mapType);
+    }
+  }, [mapType]);
+
+  const handleMapTypeChange = (type: 'roadmap' | 'satellite') => {
+    setLocalMapType(type);
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setMapTypeId(type);
+    }
+    onMapTypeChange?.(type);
+  };
 
   if (loadError) {
     return (
