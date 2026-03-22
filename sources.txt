@@ -1,0 +1,59 @@
+SOURCES AND ATTRIBUTION
+=======================
+
+AI MODELS
+---------
+This project was developed with assistance from:
+- GitHub Copilot w/ Claude Haiku 4.5 - AI-powered reasoning and code generation
+- OpenCode w/ Big Pickle - Code generation and analysis (experimental model)
+
+OPEN SOURCE DEPENDENCIES
+------------------------
+Core Framework:
+- Next.js (v14.0.0) - https://nextjs.org/ - React framework for production
+- React (v18.2.0) - https://react.dev/ - JavaScript library for building user interfaces
+- React DOM (v18.2.0) - https://react.dev/ - React package for DOM manipulation
+- TypeScript (v5.2.2) - https://www.typescriptlang.org/ - JavaScript with syntax for types
+
+Styling & UI:
+- Tailwind CSS (v3.3.0) - https://tailwindcss.com/ - Utility-first CSS framework
+- PostCSS (v8.4.31) - https://postcss.org/ - Tool for transforming CSS
+- Autoprefixer (v10.4.16) - https://autoprefixer.github.io/ - PostCSS plugin for vendor prefixes
+- Classnames (v2.3.2) - https://github.com/JedWatson/classnames - Utility for conditional classNames
+
+Mapping & Location:
+- Leaflet (v1.9.4) - https://leafletjs.com/ - JavaScript library for interactive maps
+- React Leaflet (v4.2.1) - https://react-leaflet.js.org/ - React components for Leaflet
+- @googlemaps/js-api-loader (v2.0.2) - https://github.com/googlemaps/js-api-loader - Loader for Google Maps JavaScript API
+- @react-google-maps/api (v2.20.8) - https://react-google-maps-api-docs.netlify.app/ - React components for Google Maps
+
+Backend & Database:
+- @supabase/supabase-js (v2.38.0) - https://supabase.com/ - JavaScript client for Supabase (PostgreSQL)
+- Axios (v1.6.0) - https://github.com/axios/axios - Promise-based HTTP client
+- Zustand (v4.4.0) - https://github.com/pmndrs/zustand - Lightweight state management library
+
+Development Tools:
+- ESLint (v8.57.1) - https://eslint.org/ - JavaScript linter
+- @eslint/eslintrc (v3.3.5) - Configuration utility for ESLint
+- @types/* packages - TypeScript type definitions for libraries
+
+TRANSIT DATA
+------------
+- GTFS (General Transit Feed Specification) data from transit agencies
+  (References: CAT, Jaunt CONNECT, UVA transit systems)
+- Supplemental GTFS data from https://www.transit.land/
+
+DATA SOURCES & REFERENCES
+--------------------------
+- Google Maps Directions API - Maps and routing services
+- GTFS schedule data - Transit schedule information
+- Environmental Protection Agency (EPA) / Climate research - Carbon emissions calculations
+- University of Virginia - Local context (2030 Sustainability Plan) and testing
+
+ATTRIBUTION
+-----------
+EcoRoute-UVA is developed as an open project for sustainable transportation routing
+and to promote low-carbon commuting behaviors at the University of Virginia.
+
+All open source dependencies are used under their respective licenses (primarily MIT, Apache 2.0, and others).
+Please refer to node_modules/[package-name]/LICENSE for specific license information for each dependency.
