@@ -291,13 +291,20 @@ export async function POST(req: Request) {
       modes[0].recommended = true;
     }
 
+    // Find baseline (solo_car) emissions for comparison
+    const baselineMode = modes.find(m => m.mode === 'solo_car');
+    const baseline = {
+      solo_car_gco2e: baselineMode?.gCO2e || 0,
+    };
+
     return Response.json({
       origin_lat: originLat,
       origin_lon: originLon,
       destination_lat: destinationLat,
       destination_lon: destinationLon,
       distance_miles,
-      modes,
+      scores: modes,
+      baseline,
     });
   } catch (error) {
     console.error('[/api/score] Error:', error);

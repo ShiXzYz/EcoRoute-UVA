@@ -127,6 +127,12 @@ export function getNearestStops(
   lon: number,
   radiusMeters: number = 400,
 ): Array<{ stop: GTFSStop; distanceMeters: number; feed: string }> {
+  // Validate input coordinates
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    console.warn(`[GTFS] Invalid coordinates for getNearestStops: lat=${lat}, lon=${lon}`);
+    return [];
+  }
+
   const candidates: Array<{ stop: GTFSStop; distanceMeters: number; feed: string }> = [];
 
   for (const [feedName, feed] of FEEDS.entries()) {

@@ -26,6 +26,24 @@ import SearchBar from '@/components/SearchBar';
 import SlideUpPanel from '@/components/SlideUpPanel';
 import { getCachedDirections, setCachedDirections } from '@/lib/cache';
 
+declare global {
+  interface Window {
+    google: {
+      maps: {
+        DirectionsService: any;
+        DirectionsRenderer: any;
+        LatLng: any;
+        TravelMode: any;
+        geometry: {
+          encoding: {
+            decodePath: (path: any) => any;
+          };
+        };
+      };
+    };
+  }
+}
+
 const MapSelector = dynamic(() => import('@/components/MapSelector'), { ssr: false });
 
 /**
@@ -86,6 +104,7 @@ export default function GPSPage() {
   // Trip state
   const [scores, setScores] = useState<ModeScore[] | null>(null);
   const [distance, setDistance] = useState<number>(0);
+  const [baseline, setBaseline] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedModeData, setSelectedModeData] = useState<ModeScore | null>(null);
@@ -101,10 +120,6 @@ export default function GPSPage() {
   const [selectedType, setSelectedType] = useState<'from' | 'to' | null>('from');
   const [route, setRoute] = useState<RouteData | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
-
-  // UI state
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(true);
 
   /**
    * Handle location selection from Google Places Autocomplete
@@ -164,8 +179,10 @@ export default function GPSPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: `${from.lat},${from.lng}`,
-          destination: `${to.lat},${to.lng}`,
+          originLat: from.lat,
+          originLon: from.lng,
+          destinationLat: to.lat,
+          destinationLon: to.lng,
           distance_miles,  // Passed for reference; server calls Google Directions for truth
         }),
       });
@@ -193,6 +210,7 @@ export default function GPSPage() {
   const handleModeSelect = (mode: ModeScore) => {
     setSelectedMode(mode.mode);
     setSelectedModeData(mode);
+    fetchDirections(mode.mode);
   };
 
   /**
@@ -365,11 +383,6 @@ export default function GPSPage() {
     setTimeout(tryFetch, 300);
   };
 
-  const handleModeSelect = (mode: string) => {
-    setSelectedMode(mode);
-    fetchDirections(mode);
-  };
-
   return (
     <main className="relative h-screen w-screen overflow-hidden flex flex-col">
       {/* Full-screen map display */}
@@ -439,8 +452,14 @@ export default function GPSPage() {
         onClose={() => setPanelOpen(false)}
         onCollapse={() => setPanelExpanded(false)}
         onExpand={() => setPanelExpanded(true)}
-        onSelect={handleModeSelect}
-        onLogTrip={handleLogTrip}
+        onSelect={(modeString: string) => {
+          const mode = scores?.find((m) => m.mode === modeString);
+          if (mode) handleModeSelect(mode);
+        }}
+        onLogTrip={(modeString: string, gCO2e: number) => {
+          const mode = scores?.find((m) => m.mode === modeString);
+          if (mode) handleLogTrip(mode);
+        }}
       />
     </main>
   );
