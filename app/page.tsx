@@ -165,12 +165,62 @@ export default function GPSPage() {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [tripCount, setTripCount] = useState(0);
+  const [showTripLogged, setShowTripLogged] = useState(false);
+  const [loggedTripInfo, setLoggedTripInfo] = useState<{mode: string; co2Saved: number} | null>(null);
   const { user } = useAuth();
 
+  const SESSION_KEY = 'ecoroute_session';
+
+  // Save session to localStorage
+  const saveSession = useCallback(() => {
+    if (fromLocation || toLocation || scores) {
+      const session = {
+        fromLocation,
+        toLocation,
+        scores,
+        distance,
+        baseline,
+        selectedMode,
+        route,
+        panelOpen,
+        panelExpanded,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+  }, [fromLocation, toLocation, scores, distance, baseline, selectedMode, route, panelOpen, panelExpanded]);
+
+  // Restore session from localStorage
   useEffect(() => {
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+      try {
+        const session = JSON.parse(saved);
+        // Only restore if saved within last 5 minutes
+        if (Date.now() - session.savedAt < 5 * 60 * 1000) {
+          if (session.fromLocation) setFromLocation(session.fromLocation);
+          if (session.toLocation) setToLocation(session.toLocation);
+          if (session.scores) setScores(session.scores);
+          if (session.distance) setDistance(session.distance);
+          if (session.baseline) setBaseline(session.baseline);
+          if (session.selectedMode) setSelectedMode(session.selectedMode);
+          if (session.route) setRoute(session.route);
+          if (session.panelOpen !== undefined) setPanelOpen(session.panelOpen);
+          if (session.panelExpanded !== undefined) setPanelExpanded(session.panelExpanded);
+        }
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+      }
+    }
     const trips = loadTrips();
     setTripCount(trips.length);
   }, []);
+
+  // Auto-save session when state changes
+  useEffect(() => {
+    const timer = setTimeout(saveSession, 500);
+    return () => clearTimeout(timer);
+  }, [saveSession]);
 
   useEffect(() => {
     const handleStorage = () => {
@@ -225,6 +275,24 @@ export default function GPSPage() {
     } else if (toLocation) {
       setSelectedType('from');
     }
+    // Clear session on swap
+    localStorage.removeItem(SESSION_KEY);
+  };
+
+  // Clear session and reset state
+  const clearSession = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setFromLocation(null);
+    setToLocation(null);
+    setScores(null);
+    setDistance(0);
+    setBaseline(0);
+    setSelectedMode(null);
+    setSelectedModeData(null);
+    setRoute(null);
+    setPanelOpen(false);
+    setPanelExpanded(true);
+    setSelectedType('from');
   };
 
   /**
@@ -305,6 +373,14 @@ export default function GPSPage() {
         console.log('Trip saved to cloud');
       }
     }
+
+    // Collapse panel after logging
+    setPanelExpanded(false);
+
+    // Show trip logged popup
+    setLoggedTripInfo({ mode, co2Saved });
+    setShowTripLogged(true);
+    setTimeout(() => setShowTripLogged(false), 2500);
 
     console.log('Logged trip:', { mode, co2Saved, distance, trips: trips.length });
   };
@@ -626,6 +702,20 @@ export default function GPSPage() {
           <span className="text-[10px] font-medium">Stats</span>
         </Link>
       </nav>
+
+      {/* Trip Logged Popup */}
+      {showTripLogged && loggedTripInfo && (
+        <div className="fixed inset-0 flex items-center justify-center z-[200] pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-xs mx-4 animate-bounce-in">
+            <div className="text-5xl mb-3">🌱</div>
+            <h3 className="text-lg font-bold text-green-600 mb-1">Trip Logged!</h3>
+            <p className="text-slate-600 text-sm">
+              You saved <span className="font-bold text-green-600">{loggedTripInfo.co2Saved.toLocaleString()}g</span> of CO₂
+            </p>
+            <p className="text-xs text-slate-400 mt-2">Keep up the green streak!</p>
+          </div>
+        </div>
+      )}
 
       {/* Auth Modal */}
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />

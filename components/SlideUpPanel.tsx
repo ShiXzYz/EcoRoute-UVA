@@ -187,7 +187,13 @@ export default function SlideUpPanel({
         </div>
 
         {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div 
+          className="flex-1 overflow-y-auto px-4 py-3 pb-16"
+          style={{ 
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain'
+          }}
+        >
           {modes.length > 0 ? (
             <div className="space-y-2">
               {modes.map((mode) => (

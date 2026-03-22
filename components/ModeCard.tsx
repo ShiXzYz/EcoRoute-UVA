@@ -14,8 +14,8 @@ interface ModeCardProps {
  * Tailwind color class based on CO2 saved (more saved = greener)
  */
 function getSavedColor(co2Saved: number): string {
-  if (co2Saved === 0) return 'text-red-600'; // solo_car
-  if (co2Saved >= 600) return 'text-green-600'; // high savings
+  if (co2Saved === 0) return 'text-red-600';
+  if (co2Saved >= 600) return 'text-green-600';
   if (co2Saved >= 300) return 'text-emerald-600';
   if (co2Saved >= 100) return 'text-amber-600';
   return 'text-amber-500';
@@ -38,7 +38,6 @@ export default function ModeCard({
   onSelect,
   onLogTrip,
 }: ModeCardProps) {
-  const isSoloCar = mode.mode === 'solo_car';
 
   return (
     <div
