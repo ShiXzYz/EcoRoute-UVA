@@ -601,8 +601,7 @@ export default function GPSPage() {
           if (mode) handleModeSelect(mode);
         }}
         onLogTrip={(modeString: string, gCO2e: number) => {
-          const mode = scores?.find((m) => m.mode === modeString);
-          if (mode) handleLogTrip(mode);
+          handleLogTrip(modeString, gCO2e);
         }}
       />
 
