@@ -11,12 +11,14 @@ interface ModeCardProps {
 }
 
 /**
- * Tailwind color class based on emissions intensity
+ * Tailwind color class based on CO2 saved (more saved = greener)
  */
-function getEmissionColor(gCO2e: number): string {
-  if (gCO2e < 100) return 'text-green-600';
-  if (gCO2e < 500) return 'text-amber-600';
-  return 'text-red-600';
+function getSavedColor(co2Saved: number): string {
+  if (co2Saved === 0) return 'text-red-600';
+  if (co2Saved >= 600) return 'text-green-600';
+  if (co2Saved >= 300) return 'text-emerald-600';
+  if (co2Saved >= 100) return 'text-amber-600';
+  return 'text-amber-500';
 }
 
 /**
@@ -24,7 +26,7 @@ function getEmissionColor(gCO2e: number): string {
  * 
  * Displays:
  * - Mode icon + name with timing (e.g., "UTS Bus — Departs in 5 min (14:30)")
- * - Emissions in grams CO₂e
+ * - CO₂ saved compared to driving solo
  * - Trip duration and user cost
  * - "Recommended" badge if lowest-emissions option
  * - "I took this route" button for trip logging
@@ -36,6 +38,7 @@ export default function ModeCard({
   onSelect,
   onLogTrip,
 }: ModeCardProps) {
+
   return (
     <div
       onClick={onSelect}
@@ -70,23 +73,28 @@ export default function ModeCard({
         </div>
       </div>
 
-      {/* Emissions, Time, Cost row */}
-      <div className="grid grid-cols-3 gap-3 pb-3 border-b border-slate-200">
+      {/* CO2, Time, Cost, Saved row */}
+      <div className="grid grid-cols-4 gap-2 pb-3 border-b border-slate-200">
         <div>
           <p className="text-xs text-slate-600 font-medium">CO₂</p>
-          <p className={`text-lg font-bold ${getEmissionColor(mode.gCO2e)}`}>
+          <p className="text-sm font-bold text-slate-700">
             {mode.gCO2e.toLocaleString()}g
           </p>
         </div>
         <div>
           <p className="text-xs text-slate-600 font-medium">Time</p>
-          <p className="text-lg font-bold text-slate-900">{mode.timeMin}</p>
-          <p className="text-xs text-slate-600">min</p>
+          <p className="text-sm font-bold text-slate-900">{mode.timeMin} min</p>
         </div>
         <div>
           <p className="text-xs text-slate-600 font-medium">Cost</p>
-          <p className="text-lg font-bold text-slate-900">
+          <p className="text-sm font-bold text-slate-900">
             {mode.costUSD === 0 ? 'Free' : `$${mode.costUSD}`}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-600 font-medium">Saved</p>
+          <p className={`text-sm font-bold ${getSavedColor(mode.co2Saved)}`}>
+            {mode.co2Saved.toLocaleString()}g
           </p>
         </div>
       </div>

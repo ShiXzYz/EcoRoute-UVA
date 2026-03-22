@@ -87,7 +87,7 @@ export default function MapSelector({
       center,
       zoom: 14,
       disableDefaultUI: false,
-      zoomControl: true,
+      zoomControl: false,
       mapTypeControl: false,
       fullscreenControl: false,
       mapId: '27ee17fe3338eb9aeeeff1a2',
@@ -193,23 +193,8 @@ export default function MapSelector({
       const bounds = new google.maps.LatLngBounds();
       route.points.forEach(point => bounds.extend(point));
       map.fitBounds(bounds, 80);
-    } else if (fromLocation && toLocation) {
-      polylineRef.current = new google.maps.Polyline({
-        path: [
-          { lat: fromLocation.lat, lng: fromLocation.lng },
-          { lat: toLocation.lat, lng: toLocation.lng },
-        ],
-        strokeColor: '#00A3E0',
-        strokeOpacity: 0.8,
-        strokeWeight: 4,
-        map,
-      });
-
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend({ lat: fromLocation.lat, lng: fromLocation.lng });
-      bounds.extend({ lat: toLocation.lat, lng: toLocation.lng });
-      map.fitBounds(bounds, 50);
     }
+    // No straight line - only show route after mode is selected
   }, [mapReady, fromLocation, toLocation, route, mode]);
 
   useEffect(() => {
@@ -221,13 +206,16 @@ export default function MapSelector({
       transitPolylineRef.current.setMap(null);
     }
 
-    if (!transitStops) return;
-
-    const map = mapInstanceRef.current;
-
+    // Clear main polyline when showing transit route
     const transitModes = ['uts_bus', 'cat_bus', 'connect_bus'];
     const isTransitMode = mode && transitModes.some(t => mode.startsWith(t));
-    if (!isTransitMode) return;
+    if (isTransitMode && polylineRef.current) {
+      polylineRef.current.setMap(null);
+    }
+
+    if (!transitStops || !isTransitMode) return;
+
+    const map = mapInstanceRef.current;
 
     if (transitStops.origin) {
       const originName = transitStops.origin.name || transitStops.origin.id;
