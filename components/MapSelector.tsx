@@ -61,7 +61,6 @@ export default function MapSelector({
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const [localMapType, setLocalMapType] = useState<'roadmap' | 'satellite'>(mapType);
   // eslint-disable-next-line
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
@@ -79,8 +78,9 @@ export default function MapSelector({
       zoom: 14,
       disableDefaultUI: false,
       zoomControl: true,
-      mapId: '27ee17fe3338eb9aeeeff1a2',
       mapTypeControl: false,
+      fullscreenControl: false,
+      mapId: '27ee17fe3338eb9aeeeff1a2',
     });
 
     mapInstanceRef.current = map;
@@ -209,14 +209,6 @@ export default function MapSelector({
     }
   }, [mapType]);
 
-  const handleMapTypeChange = (type: 'roadmap' | 'satellite') => {
-    setLocalMapType(type);
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setMapTypeId(type);
-    }
-    onMapTypeChange?.(type);
-  };
-
   if (loadError) {
     return (
       <div className="w-full h-full bg-slate-200 flex items-center justify-center">
@@ -233,5 +225,5 @@ export default function MapSelector({
     );
   }
 
-  return <div ref={mapRef} style={{ ...containerStyle, marginBottom: '64px' }} />;
+  return <div ref={mapRef} style={containerStyle} />;
 }

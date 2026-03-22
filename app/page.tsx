@@ -292,10 +292,10 @@ export default function Home() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
-      {/* Full Screen Map - with low z-index */}
+      {/* Full Screen Map - with top and bottom padding */}
       <div 
-        className="absolute inset-0" 
-        style={{ zIndex: 1 }}
+        className="absolute left-0 right-0 bottom-0" 
+        style={{ zIndex: 1, top: '56px', bottom: '64px' }}
         onClick={() => {
           if (panelOpen && panelExpanded) {
             setPanelExpanded(false);
